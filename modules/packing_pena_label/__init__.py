@@ -43,6 +43,14 @@ def set_shutdown_hook(func) -> None:
         ctx.shutdown_hook = func
 
 
+def close() -> None:
+    """止めるときの片付け ── 状態DB を閉じる(移植元 `serve()` の `finally`)。"""
+    from . import server
+    ctx = server.context()
+    if ctx is not None:
+        ctx.close()
+
+
 def busy() -> bool:
     """入力・計算・帳票だけ(監視レベル1)。途中で止めると困る処理は無い。"""
     return False

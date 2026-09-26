@@ -79,8 +79,13 @@ def db_path_problem(path: Optional[Path] = None) -> str:
 # ログ出力先。**統合版では3機能で1つのフォルダ**
 # (`%LOCALAPPDATA%\\CoilPackingTools\\logs`。`common/logging_utils.py`)。
 # 移植元は機能ごとの領域(`PackingDetails\\logs`)だった
-LOG_DIR = Path(os.environ.get("PACKING_DETAILS_LOG_DIR",
-                              str(_common_logging.log_dir())))
+#
+# **環境変数 `PACKING_DETAILS_LOG_DIR` は見ない。** 移植元ではログの置き場所を変えられたが、統合版の
+# ログは3機能とも統合アプリのログ(`common/logging_utils.py`)に入るので、ここだけ
+# 変えると画面の表示だけが変わり、実際のログは元の場所に出ていた(移植漏れの点検で
+# 見つかった)。置き場所を変えるときは `COIL_PACKING_TOOLS_LOG_DIR`。
+# 残っていれば起動時のログで知らせる(`start_app.log_module_environment`)
+LOG_DIR = _common_logging.log_dir()
 
 # 利用者ごとの設定(取り込み元の置き場所など)
 USER_CONFIG_PATH = Path(os.environ.get(

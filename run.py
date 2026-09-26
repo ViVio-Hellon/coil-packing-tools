@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# `start_app` 自身の `__pycache__` もアプリのフォルダに作らない(向け先は start_app が決める)
+sys.dont_write_bytecode = True
 
 from start_app import main  # noqa: E402
 

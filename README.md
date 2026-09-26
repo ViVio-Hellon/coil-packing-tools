@@ -20,7 +20,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 | ファイル | 用途 |
 |---|---|
 | `Start.vbs` | **ふだんはこれをダブルクリック。** コンソールを出さずに起動し、ブラウザに統合画面が開きます |
-| `start.bat` | 起動しないときの診断用。コンソールに理由が出ます(`start.bat --check` は環境の確認だけ) |
+| `start.bat` | 起動しないときの診断用。コンソールに理由が出ます(`start.bat --check` は環境の確認だけ、`start.bat --diagnostic` は細かいログまで残す) |
 | `stop.bat` | 明示的に止めるとき(3機能とも終わります)。資材計算の取り込み中は止めずに知らせます。中断してよければ `stop.bat --force` |
 | `run.py` | `python run.py` で起動(`start_app.py` と同じ入口) |
 
@@ -43,7 +43,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.0.3 [梱包明細] [ペナラベル] [資材計算]   接続OK [終了]
+上の帯   コイル梱包ツール VER1.0.4 [梱包明細] [ペナラベル] [資材計算]   接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
@@ -92,6 +92,7 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 | ペナラベルの状態DB・設定 | `%LOCALAPPDATA%\PackingPenaLabel\runtime\` `…\config\` |
 | 資材計算の作業用DB・設定 | `%LOCALAPPDATA%\CoilMaterialTool\data\` |
 | 統合アプリのロック・**ログ(3機能ぶん1つ)** | `%LOCALAPPDATA%\CoilPackingTools\runtime\` `…\logs\coil_packing_tools_YYYYMMDD.log` |
+| Python のキャッシュ(`__pycache__`。アプリのフォルダには作らない) | `%LOCALAPPDATA%\CoilPackingTools\pycache\` |
 | 配布設定(各機能の設定画面で書き出す) | アプリ直下 `配布設定\<機能>\` |
 | CSV などの書き出し先 | アプリ直下 `export\<機能>\` |
 
@@ -110,10 +111,10 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.0.3 | `config/app.json` |
-| 梱包明細 | 0.13.3 | `modules/packing_details/config/app.json` |
-| ペナラベル | 1.5.2 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
-| 資材計算 | 0.2.2 | `modules/packing_material_calculation/config/app.json` |
+| コイル梱包ツール(統合ツール) | 1.0.4 | `config/app.json` |
+| 梱包明細 | 0.13.4 | `modules/packing_details/config/app.json` |
+| ペナラベル | 1.5.3 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| 資材計算 | 0.2.3 | `modules/packing_material_calculation/config/app.json` |
 
 機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
 だけを変えたら、統合ツールの版だけを上げます。決まりの全体は `docs/変更履歴.md`。
@@ -139,14 +140,16 @@ python tools/print_edge_check.py
 
 ```
 python -m unittest discover -s modules/packing_details/tests -t .        # 梱包明細   463
-python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 575
+python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 586
 python -m pytest modules/packing_material_calculation/tests              # 資材計算   432
-python -m pytest tests                                                   # 統合       119
+python -m pytest tests                                                   # 統合       174
 python tools/smoke_shell.py                                              # 通し(配布前に一度)
 python tools/print_edge_check.py                                         # 印刷の端 5mm(紙面を直したら)
 ```
 
 3機能の試験は移植元のものを(import パスだけ直して)そのまま流しています。
+そのうち画面・API を叩く試験は、統合の試験(`tests/test_modules_mounted.py`)が
+**統合アプリに入口とトークン付きで載せた形**でもう一度流します(`tools/pytest_mounted.py`)。
 統合前後の件数と結果は `docs/統合設計.md` §6。
 
 ## 配布

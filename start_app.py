@@ -22,6 +22,7 @@
     python start_app.py                  ふつうに開く
     python start_app.py --no-browser     ブラウザを開かない(検証用)
     python start_app.py --check          環境の確認だけして終わる(診断用)
+    python start_app.py --diagnostic     3機能とも細かいログ(DEBUG)まで残す(診断用)
 """
 from __future__ import annotations
 
@@ -152,6 +153,71 @@ def check_writable() -> Path:
     return root
 
 
+def redirect_pycache(root: Path) -> None:
+    """`__pycache__` をローカル領域の `pycache\\` へ向ける(ペナラベルの移植元と同じ)。
+
+    **アプリのフォルダに `__pycache__` を作らせない**(基盤仕様書 2.7)。アプリ一式は
+    共有フォルダに置かれることがあり、そこへ端末ごと・Python の版ごとの `__pycache__`
+    が書かれると配布フォルダが汚れ、書けない端末では毎回コンパイルし直す。
+    統合版では、この処理が移植元のペナラベルにしか無かったので抜けていた。
+    書き先が決まるまでは書かない(`main` の最初で止めておく)。
+
+    環境変数 `PYTHONPYCACHEPREFIX` で向け先を決めてあればそれに従い、
+    `PYTHONDONTWRITEBYTECODE`(`-B`)で書かないと決めてあれば書かないまま。
+    """
+    if not sys.pycache_prefix:
+        target = root / "pycache"
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return                                  # 書かないまま動く(遅くなるだけ)
+        sys.pycache_prefix = str(target)
+    sys.dont_write_bytecode = bool(sys.flags.dont_write_bytecode)
+
+
+def _module_areas() -> list:
+    """3機能の手元の領域: (呼び名, 作って根を返す関数)。
+
+    統合版も3機能の手元DB・作業状態・設定を、**統合前と同じ各機能の領域**
+    (`%LOCALAPPDATA%\\PackingDetails` など)に置いたまま使う(引き継ぐため)。
+    """
+    def details() -> Path:
+        from modules.packing_details.meisai import app_config
+        return app_config.ensure_local_dirs()
+
+    def material() -> Path:
+        from modules.packing_material_calculation.coil_tool import app_config
+        return app_config.ensure_local_dirs()
+
+    def pena() -> Path:
+        from modules.packing_pena_label.app.config import load_config
+        cfg = load_config()
+        cfg.ensure_dirs()
+        return Path(cfg.local_dir)
+
+    return [("梱包明細", details), ("ペナラベル", pena), ("資材計算", material)]
+
+
+def check_module_areas() -> None:
+    """3機能の手元の領域を作れて、書けるか。
+
+    移植元の3つの `start_app` は、それぞれ自分の領域をここで確かめていた。
+    統合版は統合アプリの領域しか見ていなかったので、機能の領域に書けない端末では
+    画面は出ても保存のたびに失敗していた(移植漏れの点検で見つかった)。起動の前に言う。
+    """
+    for label, make in _module_areas():
+        root = None
+        try:
+            root = Path(make())
+            probe = root / "runtime" / ".write-test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            raise StartupError(
+                f"{label}の作業用フォルダに書き込めません: {root or exc}",
+                f"{exc}\n書き込みの権限があるか、ディスクの空きがあるか確認してください。") from None
+
+
 def check_config() -> None:
     """アプリ固有値が読めているか。読めなくても既定値で動くが、記録は残す。"""
     from common import app_config
@@ -168,6 +234,8 @@ def run_environment_checks() -> Path:
     check_python_version()
     check_packages()
     root = check_writable()
+    redirect_pycache(root)
+    check_module_areas()
     check_config()
     return root
 
@@ -202,6 +270,55 @@ def log_environment(mode: str) -> None:
     except Exception as exc:                        # noqa: BLE001 - 起動は止めない
         log().warning("版を読めませんでした: %s", exc)
     log().info("ローカル領域: %s", app_config.local_root())
+    log_module_environment()
+
+
+#: 統合版では効かない、移植元のログの置き場所の環境変数(ログは統合アプリの1か所)
+LEGACY_LOG_ENV = ("PACKING_DETAILS_LOG_DIR", "COIL_TOOL_LOG_DIR")
+
+
+def log_module_environment() -> None:
+    """3機能の設定と置き場所(移植元の各 `start_app` が起動のたびに残していたもの)。
+
+    **置き場所がまずければ起動時に言う**(梱包明細の移植元)。止めはしない ──
+    1台で使っているうちは動くので、ここで落とすと「昨日まで動いていたのに」になる。
+    """
+    from common import logging_utils
+
+    try:
+        from modules.packing_details.meisai import app_config as d_cfg
+        from modules.packing_details.meisai import config as d_paths
+        error = d_cfg.load_error()
+        if error:
+            log().warning("梱包明細: %s — 既定値で起動します", error)
+        problem = d_paths.db_path_problem()
+        if problem:
+            log().warning("梱包明細: %s", problem)
+        log().info("梱包明細: 手元の領域 %s / 手元DB %s", d_cfg.local_root(), d_paths.DB_PATH)
+    except Exception as exc:                        # noqa: BLE001 - 起動は止めない
+        log().warning("梱包明細の設定を確かめられませんでした: %s", exc)
+    try:
+        from modules.packing_material_calculation.coil_tool import app_config as m_cfg
+        from modules.packing_material_calculation.coil_tool import config as m_paths
+        error = m_cfg.load_error()
+        if error:
+            log().warning("資材計算: %s — 既定値で起動します", error)
+        log().info("資材計算: 手元の領域 %s / 手元DB %s", m_cfg.local_root(), m_paths.DB_PATH)
+    except Exception as exc:                        # noqa: BLE001
+        log().warning("資材計算の設定を確かめられませんでした: %s", exc)
+    try:
+        from modules.packing_pena_label.app.config import load_config
+        cfg = load_config()
+        log().info("ペナラベル: 手元の領域 %s / 状態DB %s", cfg.local_dir, cfg.db_path)
+    except Exception as exc:                        # noqa: BLE001
+        log().warning("ペナラベルの設定を確かめられませんでした: %s", exc)
+    # 移植元でログの置き場所を変えていた環境変数は、統合版では効かない。
+    # 黙って無視すると「設定したのにログが無い」になるので、残っていれば言う
+    for name in LEGACY_LOG_ENV:
+        if os.environ.get(name, "").strip():
+            log().warning("環境変数 %s は統合版では使いません。ログは %s に出ます"
+                          "(変えるときは COIL_PACKING_TOOLS_LOG_DIR)",
+                          name, logging_utils.log_dir())
 
 
 # ------------------------------------------------------------------
@@ -309,8 +426,45 @@ def start(mode: str, *, open_browser: bool = True) -> int:
         _hold_until_stopped(srv, thread)
         return 0
     finally:
+        _close_modules()
         launch_guard.remove_lock(mode)
         log().info("終了しました: mode=%s", mode)
+
+
+#: 止めるときの片付けを待つ上限(秒)。**片付けで止まらない**ための上限
+CLOSE_WAIT_SEC = 3.0
+
+
+def _close_modules() -> None:
+    """3機能の止めるときの片付け(`close` を持つ機能だけ。ペナラベルの状態DB)。
+
+    移植元のペナラベルは止めるときに状態DB を閉じていた(`serve()` の `finally`)。
+    統合版では閉じずにプロセスを終えていた(移植漏れの点検で見つかった)。
+
+    **待つのは上限まで。** 状態DB を閉じるには DB の鍵を取る。応答の途中で固まった
+    要求が鍵を持ったままだと待ち続け、「確実に落とす」(`_hard_exit`)が効かなくなる。
+    間に合わなければ閉じずに終える(開いたままでもファイルは壊れない。移植元の
+    強制終了と同じ)。
+    """
+    if "app" not in sys.modules:
+        return                                      # 本体を組み立てる前に止まった
+
+    def work() -> None:
+        for module in sys.modules["app"].all_modules():
+            close = getattr(module, "close", None)
+            if close is None:
+                continue
+            try:
+                close()
+            except Exception as exc:                # noqa: BLE001 - 止めるのは続ける
+                log().warning("%s の片付けに失敗しました: %s", module.LABEL, exc)
+
+    worker = threading.Thread(target=work, name="close-modules", daemon=True)
+    worker.start()
+    worker.join(timeout=CLOSE_WAIT_SEC)
+    if worker.is_alive():
+        log().warning("止めるときの片付けが %.0f秒 で終わらないので、そのまま終えます",
+                      CLOSE_WAIT_SEC)
 
 
 # 停止を頼んでから、受付の輪が終わるのを待つ上限(秒)。
@@ -337,22 +491,71 @@ def _hard_exit() -> None:
     """後始末をしてから、確実に落とす。"""
     import logging
 
+    _close_modules()
     logging.shutdown()
     os._exit(0)
 
 
-class _Report:
-    """3機能の初期化が待機画面へ段を知らせるための口。"""
+class _Stages:
+    """3機能の段を、まとめて待機画面に出す。
+
+    機能ごとに最新の段を持ち、画面には**まだ終わっていない機能の段を並べて**出す
+    (`梱包明細: 取り込み中 / 資材計算: 取り込み中`)。以前は最後に知らせた機能の段で
+    上書きしていたので、梱包明細の取り込みが続いていても「資材計算: 取り込み中」だけが
+    出たり、段の目印が「取り込み」から「準備」へ戻ったりした(移植漏れの点検で
+    見つかった。移植元はどれも自分の段だけを出していた)。
+    """
+
+    #: 段の目印の順(待機画面の `order` と同じ)。並べるときは進んでいるほうを出す
+    ORDER = ("env", "prepare", "import", "done")
 
     def __init__(self, srv) -> None:
         self._srv = srv
+        self._lock = threading.Lock()
+        self._now: dict = {}                      # 呼び名 → (段の文, 目印)
 
-    def stage(self, text: str, key: str = "prepare") -> None:
+    def report(self, label: str) -> "_Report":
+        return _Report(self, label)
+
+    def set(self, label: str, text: str, key: str) -> None:
         log().info("段: %s", text)
-        self._srv.mark_stage(text, key)
+        with self._lock:
+            self._now[label] = (text, key)
+            self._show()
+
+    def finish(self, label: str) -> None:
+        with self._lock:
+            if self._now.pop(label, None) is not None:
+                self._show()
 
     def error(self, text: str) -> None:
         self._srv.mark_error(text)
+
+    def _show(self) -> None:
+        if not self._now:
+            return
+        texts = [text for text, _ in self._now.values()]
+        key = max((k for _, k in self._now.values()),
+                  key=lambda k: self.ORDER.index(k) if k in self.ORDER else 0)
+        self._srv.mark_stage(" / ".join(texts), key)
+
+
+class _Report:
+    """1つの機能の初期化が、待機画面へ段を知らせるための口。"""
+
+    def __init__(self, stages: _Stages, label: str) -> None:
+        self._stages = stages
+        self._label = label
+
+    def stage(self, text: str, key: str = "prepare") -> None:
+        self._stages.set(self._label, text, key)
+
+    def error(self, text: str) -> None:
+        self._stages.error(text)
+
+
+#: 背景の取り込みが終わったかを見る間隔(秒)
+READY_POLL_SEC = 0.2
 
 
 def _initialize(srv) -> None:
@@ -366,8 +569,6 @@ def _initialize(srv) -> None:
     import app as app_module
     from common import idle_exit
 
-    report = _Report(srv)
-
     # 画面が居なくなったら終わる(基盤仕様書 2.8)。**見張りはプロセスに1つ。**
     # 3機能の画面と統合画面の外枠が、同じ見張りへ心拍を送る。
     # 処理中(資材計算の取り込み)は落とさない。スリープから戻ったら、
@@ -375,31 +576,56 @@ def _initialize(srv) -> None:
     on_wake = getattr(app_module.all_modules()[0], "on_wake", None)
     idle_exit.install(srv.stop, app_module.busy, on_wake=on_wake)
 
+    run_initializers(srv, app_module.all_modules())
+
+
+def run_initializers(srv, modules, *, limit_sec: Optional[float] = None) -> Optional[threading.Thread]:
+    """機能を順に初期化し、背景の取り込みが終わったら準備完了にする。
+
+    背景で待つときは、その見張りのスレッドを返す(試験が待てるように)。
+    """
+    stages = _Stages(srv)
+    limit = INIT_WAIT_LIMIT_SEC if limit_sec is None else limit_sec
+
     pending: list[tuple[str, threading.Event]] = []
-    for module in app_module.all_modules():
+    for module in modules:
         try:
-            event = module.initialize(report)
+            event = module.initialize(stages.report(module.LABEL))
         except Exception as exc:                  # noqa: BLE001 - ほかの機能は続ける
             log().exception("%s の初期化に失敗しました", module.LABEL)
-            report.error(f"{module.LABEL}: 初期化に失敗しました: {exc}")
+            stages.error(f"{module.LABEL}: 初期化に失敗しました: {exc}")
+            stages.finish(module.LABEL)
             continue
-        if event is not None:
+        if event is None:
+            stages.finish(module.LABEL)          # 背景の仕事が無ければ、この機能は済み
+        else:
             pending.append((module.LABEL, event))
 
     if not pending:
         srv.mark_ready(True)
-        return
+        return None
 
     def wait_all() -> None:
-        deadline = time.monotonic() + INIT_WAIT_LIMIT_SEC
-        for label, event in pending:
-            left = max(0.0, deadline - time.monotonic())
-            if not event.wait(left):
-                log().warning("%s の取り込みが %s秒 で終わらないので、先に画面を開きます",
-                              label, INIT_WAIT_LIMIT_SEC)
+        deadline = time.monotonic() + limit
+        waiting = list(pending)
+        while waiting:
+            for item in list(waiting):
+                if item[1].is_set():
+                    waiting.remove(item)
+                    stages.finish(item[0])
+            if not waiting:
+                break
+            if time.monotonic() >= deadline:
+                for label, _ in waiting:
+                    log().warning("%s の取り込みが %s秒 で終わらないので、先に画面を開きます",
+                                  label, limit)
+                break
+            time.sleep(READY_POLL_SEC)
         srv.mark_ready(True)
 
-    threading.Thread(target=wait_all, name="ready-watch", daemon=True).start()
+    thread = threading.Thread(target=wait_all, name="ready-watch", daemon=True)
+    thread.start()
+    return thread
 
 
 # ------------------------------------------------------------------
@@ -480,13 +706,20 @@ def _write_error_page(message: str, hint: str, log_dir: str) -> Path:
 # CLI
 # ------------------------------------------------------------------
 def main(argv: Optional[list[str]] = None) -> int:
+    # `__pycache__` は書き先(ローカル領域)が決まるまで書かない(`redirect_pycache`)
+    sys.dont_write_bytecode = True
     parser = argparse.ArgumentParser(description="コイル梱包ツールを起動する")
     parser.add_argument("--mode", default=AUTO, help=argparse.SUPPRESS)
     parser.add_argument("--no-browser", action="store_true",
                         help="ブラウザを開かない(検証用)")
     parser.add_argument("--check", action="store_true",
                         help="実行環境の確認だけして終わる(診断用)")
+    parser.add_argument("--diagnostic", action="store_true",
+                        help="3機能とも細かいログ(DEBUG)まで残す(ペナラベルの移植元と同じ)")
     args = parser.parse_args(argv)
+    if args.diagnostic:
+        from common import logging_utils
+        logging_utils.set_diagnostic(True)
 
     open_browser = not args.no_browser
 

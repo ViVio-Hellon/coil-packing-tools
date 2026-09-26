@@ -58,6 +58,9 @@ def main(argv=None) -> int:
                PACKING_DETAILS_LOT_DB_DIR=str(home / "lot"), PACKING_DETAILS_KONPO_DB_DIR=str(home / "konpo"),
                COIL_TOOL_MASTER_DB_DIR=str(home / "master"), COIL_TOOL_LOT_DB_DIR=str(home / "lot"),
                PPL_PREFER_ACCESS="0")
+    # 本番と同じく .pyc を書かせる(書き先は start_app が決める。アプリのフォルダには作らない)
+    for name in ("PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX"):
+        env.pop(name, None)
     base = "http://127.0.0.1:%d" % port
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -378,6 +381,11 @@ def main(argv=None) -> int:
     log_text = "".join(p.read_text(encoding="utf-8") for p in (local / "logs").glob("*.log"))
     check("ログに何の版が違ったかが残る", "別の版を終わらせました(梱包明細 %s → 9.9.9)" % before in log_text)
     check("ログに起動した版の一覧が残る", "版: コイル梱包ツール" in log_text and "梱包明細 9.9.9" in log_text)
+    check("ログに3機能の手元の領域と手元DBが残る",
+          all(("%s: 手元の領域" % k) in log_text for k in ("梱包明細", "ペナラベル", "資材計算")))
+    made = sorted(str(p.relative_to(copy)) for p in copy.rglob("__pycache__"))
+    check("アプリのフォルダに __pycache__ を作らない(ローカル領域の pycache へ)",
+          not made and any((local / "pycache").rglob("*.pyc")), ", ".join(made[:3]))
 
     print("=" * 76)
     ng = [r for r in results if not r[1]]

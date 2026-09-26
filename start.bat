@@ -17,6 +17,7 @@ rem
 rem  引数はそのまま start_app.py へ渡します。よく使うのは次の2つ:
 rem      start.bat                    ふつうに開く
 rem      start.bat --check            環境の確認だけして終わる
+rem      start.bat --diagnostic       細かいログ(DEBUG)まで残す
 rem ===================================================================
 setlocal
 

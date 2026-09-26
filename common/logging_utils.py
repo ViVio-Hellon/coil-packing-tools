@@ -31,16 +31,31 @@ from pathlib import Path
 
 from . import app_config
 
-# 3機能のロガーの根。DEBUG まで通す(移植元と同じ)。
+# 3機能と統合アプリのロガーの根と、ふだん残す細かさ。**移植元と同じ量を残す**:
+# 梱包明細・資材計算は DEBUG まで、ペナラベルは INFO まで(ペナラベルの移植元は
+# `--diagnostic` で起動したときだけ DEBUG を残した。統合版も `start_app.py --diagnostic`)。
 # ペナラベルは `logging.getLogger(__name__)` なので、パッケージ名が根になる
-MODULE_ROOTS: tuple[str, ...] = (
-    "meisai", "coil_tool", "modules.packing_pena_label", "coil_packing_tools",
-)
+MODULE_LEVELS: dict[str, int] = {
+    "meisai": logging.DEBUG,
+    "coil_tool": logging.DEBUG,
+    "modules.packing_pena_label": logging.INFO,
+    "coil_packing_tools": logging.DEBUG,
+}
+MODULE_ROOTS: tuple[str, ...] = tuple(MODULE_LEVELS)
 
 # ファイル名の前置き。**出どころはここ1つ**
 FILE_PREFIX = "coil_packing_tools"
 
 _configured = False
+_diagnostic = False
+
+
+def set_diagnostic(on: bool = True) -> None:
+    """診断のために、3機能とも DEBUG まで残す(`start_app.py --diagnostic`)。"""
+    global _diagnostic
+    _diagnostic = on
+    for name, level in MODULE_LEVELS.items():
+        logging.getLogger(name).setLevel(logging.DEBUG if on else level)
 
 
 def log_dir() -> Path:
@@ -97,11 +112,11 @@ def configure_logging() -> None:
     log_dir().mkdir(parents=True, exist_ok=True)
 
     root = logging.getLogger()
-    # 根は INFO。3機能の根(下)は DEBUG まで通す ── 移植元と同じ量を残す
+    # 根は INFO。3機能の根(上の MODULE_LEVELS)は移植元と同じ量を残す
     if root.level == logging.NOTSET or root.level > logging.INFO:
         root.setLevel(logging.INFO)
-    for name in MODULE_ROOTS:
-        logging.getLogger(name).setLevel(logging.DEBUG)
+    for name, level in MODULE_LEVELS.items():
+        logging.getLogger(name).setLevel(logging.DEBUG if _diagnostic else level)
 
     formatter = logging.Formatter("%(asctime)s | %(name)s | %(levelname)s | %(message)s",
                                    datefmt="%Y/%m/%d %H:%M:%S")

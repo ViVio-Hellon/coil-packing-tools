@@ -31,6 +31,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 from flask import (Blueprint, Flask, Response, current_app, jsonify, request,
                    send_from_directory)
@@ -55,6 +56,11 @@ DEFAULT_PREFIX = "/pena"
 
 #: 最大リクエストボディ(入力画面しかないので小さくてよい)
 MAX_BODY = 1 * 1024 * 1024
+
+#: 要求のログを DEBUG に落とす経路(数秒ごとに来る心拍・接続確認)
+QUIET_PATHS = frozenset({
+    "/api/health", "/api/screen/ping", "/api/screen/state",
+})
 
 #: `/api/*` のうちトークンを要求しないもの。
 #:   /api/health … まだトークンを知らない相手(起動確認)が叩く
@@ -134,6 +140,13 @@ class AppContext:
         log.info("停止要求を受け付けました。サーバーを停止します。")
         threading.Thread(target=self.shutdown_hook, daemon=True).start()
 
+    def close(self) -> None:
+        """状態DB を閉じる(移植元 `serve()` の `finally` と同じ)。何度呼んでもよい。"""
+        try:
+            self.store.close()
+        except Exception as exc:                    # noqa: BLE001 - 止めるときは続ける
+            log.warning("状態DB を閉じられませんでした: %s", exc)
+
 
 # プロセスに1つ。統合アプリの入口(`__init__.py`)が `initialize` などで使う
 _context: Optional[AppContext] = None
@@ -181,7 +194,7 @@ def build_blueprint(url_prefix: str = DEFAULT_PREFIX, *,
                             "message": "この画面を開き直してください"}), 403
         return None
 
-    @bp.route("/", defaults={"path": ""}, methods=["GET", "HEAD"])
+    @bp.route("/", defaults={"path": ""}, methods=["GET", "HEAD", "POST"])
     @bp.route("/<path:path>", methods=["GET", "HEAD", "POST"])
     def dispatch(path: str):
         # 統合アプリが決めたトークン・ポートを、画面へ渡す値へ写す
@@ -189,11 +202,34 @@ def build_blueprint(url_prefix: str = DEFAULT_PREFIX, *,
         if current_app.config.get("PORT"):
             ctx.cfg.port = int(current_app.config["PORT"])
         rel = "/" + path.rstrip("/") if path else "/"
+        if request.method == "POST":
+            # 移植元 do_POST: 本文を確かめてから、API でなければ JSON の 404
+            # (以前は画面の経路へ POST すると画面をそのまま返していた)
+            return _api(ctx, rel) if rel.startswith("/api/") else _post_elsewhere()
         if rel.startswith("/fonts/"):
             return _serve_font(rel)
         if rel.startswith("/api/"):
             return _api(ctx, rel)
         return _page(ctx, rel, prefix)
+
+    @bp.errorhandler(404)
+    def _missing(_e):                           # noqa: ANN202 - Flaskのフック
+        """静的ファイルが無いとき。移植元と同じ HTML の案内(統合アプリの既定は JSON)。"""
+        if request.method == "POST":
+            return _post_elsewhere()
+        return _error_page(404, "ファイルが見つかりません。", prefix)
+
+    @bp.after_request
+    def _log_request(response):                 # noqa: ANN202 - Flaskのフック
+        """要求を1行ずつ残す(移植元 `Handler.log_message` と同じ)。
+
+        画面の心拍・接続確認は数秒ごとに来るので DEBUG に落とす(`--diagnostic` で出る)。
+        """
+        rel = security.relative_path(prefix)
+        level = logging.DEBUG if rel in QUIET_PATHS else logging.INFO
+        log.log(level, "%s \"%s %s\" %s", request.remote_addr or "-", request.method,
+                _logged_url(), response.status_code)
+        return response
 
     return bp
 
@@ -222,6 +258,12 @@ def register(app: Flask, url_prefix: str = DEFAULT_PREFIX) -> Blueprint:
 # ------------------------------------------------------------------
 # 経路(移植元 Handler.do_GET / do_POST)
 # ------------------------------------------------------------------
+def _logged_url() -> str:
+    """ログに残す URL。**トークン(`t=`)は伏せる**(ログは端末に残り、人に渡すこともある)。"""
+    args = [(k, "***" if k == "t" else v) for k, v in request.args.items(multi=True)]
+    return request.path + ("?" + urlencode(args, safe="*") if args else "")
+
+
 def _html(html: str, status: int = 200) -> Response:
     return Response(html, status=status, mimetype="text/html")
 
@@ -249,20 +291,43 @@ def _serve_font(rel: str) -> Response:
     return send_from_directory(str(base), name, mimetype="font/ttf")
 
 
+def _read_body():
+    """POST の本文(移植元 do_POST と同じ確かめ方)。`(本文, 断りの応答)` のどちらか。
+
+    **長さを名乗らない送り方(chunked)でも上限を守る。** `Content-Length` だけを
+    見ていると、名乗らない要求は上限なしで読んでいた(移植元の `http.server` は
+    名乗らない本文を読まなかった)。上限より1バイトだけ多く読んで確かめる。
+    """
+    too_big = jsonify({"ok": False, "message": "リクエストが大きすぎます"}), 413
+    if (request.content_length or 0) > MAX_BODY:
+        return None, too_big
+    raw = request.stream.read(MAX_BODY + 1) or b""
+    if len(raw) > MAX_BODY:
+        return None, too_big
+    try:
+        body = json.loads(raw.decode("utf-8")) if raw else {}
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, (jsonify({"ok": False, "message": "リクエストを解釈できません"}), 400)
+    if not isinstance(body, dict):
+        return None, (jsonify({"ok": False, "message": "リクエスト形式が不正です"}), 400)
+    return body, None
+
+
+def _post_elsewhere():
+    """API 以外への POST(移植元と同じ JSON の 404)。本文の確かめは先に行う。"""
+    _, refused = _read_body()
+    if refused is not None:
+        return refused
+    return jsonify({"ok": False, "message": "不明なエンドポイントです"}), 404
+
+
 def _api(ctx: AppContext, rel: str) -> Response:
     method = "POST" if request.method == "POST" else "GET"
     body: dict = {}
     if method == "POST":
-        length = request.content_length or 0
-        if length > MAX_BODY:
-            return jsonify({"ok": False, "message": "リクエストが大きすぎます"}), 413
-        raw = request.get_data() or b""
-        try:
-            body = json.loads(raw.decode("utf-8")) if raw else {}
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            return jsonify({"ok": False, "message": "リクエストを解釈できません"}), 400
-        if not isinstance(body, dict):
-            return jsonify({"ok": False, "message": "リクエスト形式が不正です"}), 400
+        body, refused = _read_body()
+        if refused is not None:
+            return refused
     status, payload = ctx.api.handle(rel, method, body)
     return jsonify(payload), status
 

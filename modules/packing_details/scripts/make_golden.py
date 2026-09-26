@@ -4,7 +4,7 @@
 ロット番号を入れると何が引けて、前工程実績数がいくつになり、
 条数がどう配られるか ── ここまでは取り込み元だけで決まる。
 
-    python scripts/make_golden.py <取り込み元のフォルダ> [出力先]
+    python modules/packing_details/scripts/make_golden.py <取り込み元のフォルダ> [出力先]
 
 作られた JSON は `tests/test_golden.py` がそのまま読む。上流の
 写しが新しくなったら作り直して、差分を見て「変わったのはデータか、
@@ -17,7 +17,9 @@ import sqlite3
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# 統合アプリの根(`modules.packing_details` として読む)。移植元は機能の根だったが、
+# 統合版では3つ上になる(ここを直さないと import で落ちていた)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from modules.packing_details.meisai import config, data_sync, db, lot_repo, strand_service  # noqa: E402
 

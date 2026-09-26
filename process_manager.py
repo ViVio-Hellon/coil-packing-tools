@@ -37,6 +37,9 @@ from typing import Optional
 
 APP_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_ROOT))
+# アプリのフォルダに `__pycache__` を作らない(start_app.redirect_pycache と同じ理由。
+# 止めるだけの短い処理なので、書き先を向けずに書かないでおく)
+sys.dont_write_bytecode = True
 
 from common import app_config, modes  # noqa: E402
 from common.logging_utils import get_logger  # noqa: E402

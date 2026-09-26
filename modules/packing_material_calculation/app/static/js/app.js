@@ -135,7 +135,13 @@ if (take) {
   });
 }
 const gateClose = $('#gateClose');
-if (gateClose) {
+if (gateClose && window.top !== window) {
+  // 【統合版】統合画面の中(iframe)では出さない。iframe からは `window.close()` が
+  // 効かず、押しても「ブラウザの × で閉じて」と出るだけで、そのタブを閉じると
+  // 梱包明細・ペナラベルまで閉じる(移植漏れの点検で見つかった)。
+  // 梱包明細・ペナラベルの「別の画面で開いています」にも閉じるボタンは無い
+  gateClose.hidden = true;
+} else if (gateClose) {
   gateClose.addEventListener('click', () => {
     window.close();
     // `window.close()` は自分で開いたタブしか閉じられない。
