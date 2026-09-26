@@ -766,13 +766,13 @@ def _after_idle(sh: Shell, label: str) -> None:
     m.click("#run")
     check(f"{label}: 資材計算で計算できる", material_toast(m, "台数"), text(m, "#toast"))
     d = sh.tab("details")
-    before = text(d, "#btnReverse")
-    d.click("#btnReverse")
-    changed = wait_until(lambda: text(d, "#btnReverse") != before or
-                         "reversed" in (d.get_attribute("#grid", "class") or ""), 5)
-    d.click("#btnReverse")
+    codes = []
+    for _ in range(2):                          # 反転して、元に戻す
+        with d.page.expect_response(lambda r: "/details/api/reverse" in r.url) as info:
+            d.click("#btnReverse")
+        codes.append(info.value.status)
     check(f"{label}: 梱包明細の画面を操作できる(断られない)",
-          changed is not None and not visible(d, "#takenOver"), text(d, "#notice"))
+          codes == [200, 200] and not visible(d, "#takenOver"), codes)
 
 
 def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
