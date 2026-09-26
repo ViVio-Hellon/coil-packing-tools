@@ -59,7 +59,7 @@ MAX_BODY = 1 * 1024 * 1024
 
 #: 要求のログを DEBUG に落とす経路(数秒ごとに来る心拍・接続確認)
 QUIET_PATHS = frozenset({
-    "/api/health", "/api/screen/ping", "/api/screen/state",
+    "/api/health", "/api/screen/ping", "/api/screen/state", "/api/progress",
 })
 
 #: `/api/*` のうちトークンを要求しないもの。

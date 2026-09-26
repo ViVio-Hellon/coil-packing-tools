@@ -382,6 +382,17 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
 .pwrow label{font-size:13px; font-weight:700; cursor:pointer}
 .pwrow input{flex:1 1 220px; width:auto; max-width:360px}
 .pwrow .btn{flex:0 0 auto; width:auto; min-width:120px; margin-bottom:0}
+/* 参照先の欄と「この欄を保存」を横に並べる */
+.setone{display:flex; gap:8px; align-items:center}
+.setone input[type=text]{flex:1 1 auto; min-width:0}
+.setone .btn{flex:0 0 auto; width:auto; margin-bottom:0; white-space:nowrap}
+/* 合言葉を聞く窓(伏せ字)。`prompt()` の代わり */
+.pwdialog{border:1px solid #cfd6dd; border-radius:10px; padding:18px 20px; max-width:440px;
+  box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.pwdialog::backdrop{background:rgba(0,0,0,.35)}
+.pwdialog-msg{margin:0 0 10px; white-space:pre-line; font-size:14px}
+.pwdialog-box{width:100%; font-size:16px; padding:8px 10px; margin-bottom:12px}
+.pwdialog .btn-row .btn{width:auto; min-width:100px}
 .pwstate{font-size:12px; color:var(--muted); white-space:nowrap}
 .pwstate.ok{color:#1b7f3b; font-weight:700}
 .pwstate.ng{color:#b3261e; font-weight:700}
@@ -480,3 +491,13 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
 .masterbar select{width:auto; min-width:220px}
 .masterbar input[type=text]{width:auto; min-width:220px; flex:1}
 .masterbar .btn{width:auto; margin:0}
+
+/* 進み具合の棒(重量計算_DB)。画面の上に重ねて出す。紙には出さない */
+.pbar{position:fixed; inset:0; display:grid; place-items:center; z-index:900;
+  background:rgba(255,255,255,.55)}
+.pbar-card{min-width:360px; max-width:90vw; padding:16px 20px; background:#fff;
+  border:1px solid #cfd6dd; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.pbar-title{display:block; font-size:15px; margin-bottom:10px}
+.pbar-track{height:14px; background:#e6ebef; border-radius:7px; overflow:hidden}
+.pbar-fill{height:100%; width:0; background:#0e6a72; transition:width .2s ease}
+.pbar-text{margin-top:8px; font-size:13px; color:#44515c}

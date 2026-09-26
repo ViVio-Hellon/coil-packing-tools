@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 #: アプリケーションID（ローカル領域のフォルダ名、多重起動判定、/api/health の識別子）
 APP_ID = "PackingPenaLabel"
 APP_NAME = "梱包ペナ ラベル・風袋計算"
-APP_VERSION = "1.5.3"
+APP_VERSION = "1.5.4"
 #: 版を切った日。画面のバージョン表示に添える。
 #: **中身を直したら必ずここを上げる**。上げ忘れると、
 #: 現場が「新しいファイルに差し替わったか」を画面から判断できない。

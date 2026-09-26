@@ -92,6 +92,29 @@ class PenaHttpTest(unittest.TestCase):
         self.assertIn('"GET /pena/?t=***&pane=1" 200', text)
 
 
+class PenaFieldFeedbackTest(unittest.TestCase):
+    """現場の指摘で直したところ(ペナラベル 1.5.4)を、統合アプリに載せた形で。"""
+
+    def setUp(self):
+        self.client = _make_app(self).test_client()
+
+    def test_every_path_row_has_its_own_save_button(self):
+        import re
+        from modules.packing_pena_label.app.config import load_config
+        from modules.packing_pena_label.app.services import settings as S
+        html = self.client.get("/pena/settings").get_data(as_text=True)
+        paths = [it["key"] for it in S.describe(load_config()) if it["kind"] in ("dir", "file")]
+        self.assertTrue(paths)
+        for key in paths:
+            self.assertRegex(html, r'data-save-one="%s"' % re.escape(key), key)
+
+    def test_progress_is_readable_during_and_after_calc(self):
+        res = self.client.get("/pena/api/progress", headers=H)
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("active", res.get_json())
+        self.assertEqual(self.client.get("/pena/api/progress").status_code, 403, "トークンが要る")
+
+
 class PenaLogLevelTest(unittest.TestCase):
     def tearDown(self):
         from common import logging_utils

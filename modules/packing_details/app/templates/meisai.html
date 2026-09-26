@@ -131,7 +131,13 @@
     <h2>積み上げ<span class="hint">クリックで解除</span></h2>
     <div class="row" style="margin-bottom:8px">
       <label for="stackMax">積み条数</label>
-      <input type="text" id="stackMax" inputmode="numeric" style="width:50px;text-align:center">
+      <input type="text" id="stackMax" inputmode="numeric" style="width:50px;text-align:center"
+             data-max="{{ stack_limit }}">
+      {# 丈数と同じ −/＋(現場の指摘: スピンボタンでも数を入れたい) #}
+      <span class="spin">
+        <button type="button" data-stack="-1" aria-label="積み条数を1減らす">−</button>
+        <button type="button" data-stack="1" aria-label="積み条数を1増やす">＋</button>
+      </span>
       <span class="stamp">最大{{ stack_limit }}</span>
     </div>
     <div class="stack" id="stack"></div>

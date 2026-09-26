@@ -92,6 +92,7 @@ class ApiRoutes:
             "/api/select-checkbox": self._select_checkbox,
             "/api/apply-weight": self._apply_weight,
             "/api/calc-tare": self._calc_tare,
+            "/api/progress": self._progress,
             "/api/calc-list": self._calc_list,
             "/api/clear": self._clear,
             "/api/print-targets": self._print_targets,
@@ -133,6 +134,10 @@ class ApiRoutes:
         "/api/reload-materials",
         "/api/master/save", "/api/master/delete",
     })
+
+    def _progress(self, body):
+        """時間のかかる処理(重量計算_DB)の進み具合。読むだけ。"""
+        return {"ok": True, **self.wf.progress.snapshot()}
 
     def handle(self, path: str, method: str, body: Dict[str, Any]):
         """(status, payload) を返す。未知のパスは 404。"""

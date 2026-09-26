@@ -1445,6 +1445,14 @@ class PageRoutes:
             resolved = (f'<div class="hint" style="margin-top:4px">'
                         f'探すファイル: <span class="mono">{esc(it["resolved"])}</span></div>')
 
+        # 参照先(フォルダー・ファイル)は**欄ごとに保存できる**ようにする(現場の指摘)。
+        # 下の「保存する」は全部の欄をまとめて書く。1つだけ直したいときに、
+        # ほかの欄の打ちかけまで書いてしまわないように(資材計算の置き場所と同じ形)
+        if it["kind"] in ("dir", "file"):
+            control = (f'<div class="setone">{control}'
+                       f'<button type="button" class="btn btn-sm" data-save-one="{esc(key)}">'
+                       f'この欄を保存</button></div>')
+
         return (f'<div class="setrow" data-field="{esc(key)}">'
                 f'<div class="setlab"><label for="set_{esc(key)}">{esc(it["label"])}</label>'
                 f'{badge}</div>'
@@ -1519,28 +1527,46 @@ class PageRoutes:
     box.addEventListener("input", function(){ pwState("未確認", ""); });
   })();
 
-  function save(password){
-    var body = {values: collect()};
+  // `only` を渡すとその欄だけを保存する(欄ごとの「この欄を保存」)
+  function save(password, only){
+    var all = collect(), values = all;
+    if (only) { values = {}; values[only] = all[only]; }
+    var body = {values: values};
     if (password) { body.password = password; }
     return pplPost("/api/settings/save", body).then(function(j){
-      // パスを変えようとしたのに合言葉が無い／違う → その場で聞く
+      // パスを変えようとしたのに合言葉が無い／違う → その場で聞く(伏せ字)
       if (j.needPassword) {
-        var pw = window.prompt(j.message + "\\n\\n合言葉を入力してください", "");
-        if (pw === null) {
-          result("パスの変更は取り消しました。", "warnbox");
-          return null;
-        }
-        var box = document.getElementById("setPassword");
-        if (box) { box.value = pw; }
-        return save(pw);
+        return pplAskPassword(j.message + "\\n\\n合言葉を入力してください").then(function(pw){
+          if (pw === null) {
+            result("パスの変更は取り消しました。", "warnbox");
+            return null;
+          }
+          var box = document.getElementById("setPassword");
+          if (box) { box.value = pw; }
+          return save(pw, only);
+        });
       }
       return j;
     });
   }
 
+  document.querySelectorAll("[data-save-one]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var box = document.getElementById("setPassword");
+      btn.disabled = true;
+      save(box ? box.value : "", btn.dataset.saveOne).then(saved)
+        .catch(function(e){ pplToast(String(e), "error"); })
+        .then(function(){ btn.disabled = false; });
+    });
+  });
+
   document.getElementById("setSave").addEventListener("click", function(){
     var box = document.getElementById("setPassword");
-    save(box ? box.value : "").then(function(j){
+    save(box ? box.value : "").then(saved)
+      .catch(function(e){ pplToast(String(e), "error"); });
+  });
+
+  function saved(j){
       if (!j) { return; }
       showErrors(j.errors);
       pplToast(j.message, j.ok ? "info" : "warn");
@@ -1565,8 +1591,7 @@ class PageRoutes:
         result(html, "okbox");
       }
       setTimeout(function(){ location.reload(); }, 1200);
-    }).catch(function(e){ pplToast(String(e), "error"); });
-  });
+  }
   document.getElementById("setTest").addEventListener("click", function(){
     result("確認しています…", "hint");
     pplPost("/api/settings/test-master", {values: collect()}).then(function(j){
@@ -1615,10 +1640,11 @@ class PageRoutes:
     if (pw) { b.password = pw; }
     return pplPost(url, b).then(function(j){
       if (!j.needPassword) { return j; }
-      var got = window.prompt(j.message + "\\n\\n合言葉を入力してください", "");
-      if (got === null) { return null; }
-      if (box) { box.value = got; }
-      return dPost(url, body, got);
+      return pplAskPassword(j.message + "\\n\\n合言葉を入力してください").then(function(got){
+        if (got === null) { return null; }
+        if (box) { box.value = got; }
+        return dPost(url, body, got);
+      });
     });
   }
   function dSend(url, body, confirmText){
@@ -1709,11 +1735,12 @@ class PageRoutes:
     if (pw) { b.password = pw; }
     return pplPost(url, b).then(function(j){
       if (!j.needPassword) { return j; }
-      var got = window.prompt(j.message + "\\n\\n合言葉を入力してください", "");
-      if (got === null) { return null; }
-      var box = document.getElementById("setPassword");
-      if (box) { box.value = got; }
-      return mPost(url, body, got);
+      return pplAskPassword(j.message + "\\n\\n合言葉を入力してください").then(function(got){
+        if (got === null) { return null; }
+        var box = document.getElementById("setPassword");
+        if (box) { box.value = got; }
+        return mPost(url, body, got);
+      });
     });
   }
 

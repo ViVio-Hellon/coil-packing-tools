@@ -76,6 +76,51 @@
   }
   window.pplPost = post;
 
+  // ---------------------------------------------------------- 合言葉を聞く
+  // **打った文字を見せない**(●で出す)。以前はブラウザの `prompt()` で聞いていて、
+  // 合言葉がそのまま画面に見えていた(現場の指摘)。`prompt()` は伏せ字にできない。
+  // 戻り値は Promise: 入れた合言葉、やめたら null。
+  function askPassword(message) {
+    return new Promise(function (resolve) {
+      var dlg = document.createElement("dialog");
+      dlg.className = "pwdialog";
+      var p = document.createElement("p");
+      p.className = "pwdialog-msg";
+      p.textContent = message || "合言葉を入力してください";
+      var box = document.createElement("input");
+      box.type = "password";
+      box.autocomplete = "off";
+      box.className = "pwdialog-box";
+      box.setAttribute("aria-label", "合言葉");
+      var row = document.createElement("div");
+      row.className = "btn-row";
+      var ok = document.createElement("button");
+      ok.type = "button"; ok.className = "btn btn-primary"; ok.textContent = "OK";
+      var cancel = document.createElement("button");
+      cancel.type = "button"; cancel.className = "btn"; cancel.textContent = "やめる";
+      row.appendChild(ok); row.appendChild(cancel);
+      dlg.appendChild(p); dlg.appendChild(box); dlg.appendChild(row);
+      document.body.appendChild(dlg);
+      var done = false;
+      function finish(value) {
+        if (done) { return; }
+        done = true;
+        try { dlg.close(); } catch (e) { /* 閉じていても構わない */ }
+        dlg.remove();
+        resolve(value);
+      }
+      ok.addEventListener("click", function () { finish(box.value); });
+      cancel.addEventListener("click", function () { finish(null); });
+      dlg.addEventListener("cancel", function (ev) { ev.preventDefault(); finish(null); });
+      box.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); finish(box.value); }
+      });
+      dlg.showModal();
+      box.focus();
+    });
+  }
+  window.pplAskPassword = askPassword;
+
   // ---------------------------------------------------------- 画面の多重起動
   // 作業状態（検査番号・重量・本数・計算結果）はサーバー側に1組しか無い。
   // 入力できる画面を2枚開くと両方が同じ1組を書き換え、
@@ -496,6 +541,52 @@
     }
   });
 
+  // --- 進み具合の棒(重量計算_DB) ---
+  // 押してから答えが返るまで、サーバの進み具合(`/api/progress`)を 0.25 秒ごとに聞いて
+  // 「何段目まで済んだか」を棒と文で出す(現場の指摘: 重いのはいいが進み具合を出すこと)。
+  // すぐ終わるときに一瞬だけ出てちらつかないよう、0.3 秒たってから出す。
+  function progressBar(title) {
+    var box = null, timer = null, shown = null, stopped = false;
+    function ensure() {
+      if (box) { return box; }
+      box = document.createElement("div");
+      box.className = "pbar no-print";
+      box.setAttribute("role", "progressbar");
+      box.innerHTML = '<div class="pbar-card"><b class="pbar-title"></b>' +
+        '<div class="pbar-track"><div class="pbar-fill"></div></div>' +
+        '<div class="pbar-text"></div></div>';
+      box.querySelector(".pbar-title").textContent = title + "中…";
+      document.body.appendChild(box);
+      return box;
+    }
+    function draw(p) {
+      var el = ensure();
+      var total = Math.max(1, p.total || 1), step = Math.min(p.step || 0, total);
+      var pct = Math.round(step * 100 / total);
+      el.querySelector(".pbar-fill").style.width = pct + "%";
+      el.setAttribute("aria-valuenow", String(pct));
+      el.querySelector(".pbar-text").textContent =
+        (p.text || "始めています") + "(" + step + " / " + total + ")" +
+        (p.elapsed ? "  " + p.elapsed + "秒" : "");
+    }
+    function poll() {
+      if (stopped) { return; }
+      fetch(url("/api/progress"), { cache: "no-store", headers: headers() })
+        .then(function (r) { return r.json(); })
+        .then(function (p) { if (!stopped && p && p.active) { draw(p); } })
+        .catch(function () { /* 聞けなくても計算は続く */ })
+        .then(function () { if (!stopped) { timer = setTimeout(poll, 250); } });
+    }
+    shown = setTimeout(function () { if (!stopped) { draw({ step: 0, total: 1 }); poll(); } }, 300);
+    return {
+      stop: function () {
+        stopped = true;
+        clearTimeout(shown); clearTimeout(timer);
+        if (box) { box.remove(); box = null; }
+      }
+    };
+  }
+
   // --- ボタン ---
   var ACTIONS = {
     applyWeight: function () {
@@ -505,10 +596,12 @@
       });
     },
     calcTare: function () {
+      var bar = progressBar("重量計算_DB");
       return post("/api/calc-tare", { current: collect() }).then(function (j) {
+        bar.stop();
         toast(j.message, j.ok ? (j.level || "info") : (j.level || "warn"));
         paint(j.state);
-      });
+      }, function (e) { bar.stop(); throw e; });
     },
     clearAll: function () {
       if (!window.confirm("入力内容（NW・GW・高さ）と台紙の本数欄をクリアします。よろしいですか？")) {

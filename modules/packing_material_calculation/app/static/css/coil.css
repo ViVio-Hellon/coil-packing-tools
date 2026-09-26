@@ -35,7 +35,10 @@
 
 /* ---- 帯の項目 ---- */
 .slot{ display:flex; align-items:center; gap:6px; }
-.slot__k{ font-size:11px; color:var(--muted); }
+.slot__k{ font-size:12px; color:var(--muted); }
+/* 帯の「ライン」「担当者」。**選んだ名前が読める大きさ**にする(現場の指摘:
+   選択の文字が小さい)。計算画面の入力欄(18px)にそろえる */
+.ribbon select.input{ font-size:var(--fs-key); font-weight:600; min-height:48px; }
 .slot__v{ font-size:12px; font-variant-numeric:tabular-nums; }
 
 /* ---- 版のバッジ ----
@@ -154,10 +157,14 @@ table.grid-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
 .btnrow{ display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
 .sec{ background:var(--surface); border:1px solid var(--hairline);
       border-radius:8px; padding:16px 18px; margin:0 0 14px;
-      /* `components.css` にも同じ名前の `.sec`(表の升の2行目: 折り返さない)が
-         ある。このアプリでは升の `.sec` を使っておらず、区画にそちらの
-         `nowrap` が掛かって**長い説明文が右で切れていた**。区画は折り返す */
-      white-space:normal; }
+      /* `components.css` にも同じ名前の `.sec`(表の升の2行目: 折り返さない・
+         10px・薄い色・はみ出しは切る)がある。このアプリでは升の `.sec` を
+         使っておらず、区画にそちらが掛かっていた:
+           - `nowrap` で**長い説明文が右で切れていた**。区画は折り返す
+           - 10px が中の入力欄にまで受け継がれ、**置き場所の欄の文字が小さかった**
+             (現場の指摘。入力欄は `font:inherit`)。区画は本文の大きさに戻す */
+      white-space:normal; font-size:inherit; color:inherit; line-height:inherit;
+      overflow:visible; text-overflow:clip; }
 .sec > h2{ font-size:15px; margin:0 0 10px; }
 
 /* 中身は main の中でスクロールさせる。帯とレールは動かさない */

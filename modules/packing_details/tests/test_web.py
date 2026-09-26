@@ -738,5 +738,18 @@ class ManualTest(unittest.TestCase):
                 self.assertNotIn("app_id", res.get_data(as_text=True))
 
 
+class StackSpinTest(unittest.TestCase):
+    """積み条数にも −/＋ を置く(現場の指摘。梱包明細 0.13.5)。"""
+
+    def test_積み条数の横にスピンボタン(self):
+        client, _ = _client(self)
+        html = client.get(f"/meisai?t={TOKEN}").data.decode("utf-8")
+        at = html.index('id="stackMax"')
+        near = html[at:at + 600]
+        self.assertIn('data-stack="-1"', near)
+        self.assertIn('data-stack="1"', near)
+        self.assertIn(f'data-max="{config.STACK_LIMIT}"', near)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -788,6 +788,18 @@ function wire() {
   $("stackMax").addEventListener("change", () => {
     send("/api/stack-max", { value: $("stackMax").value });
   });
+  // −/＋ でも入れられる(丈数と同じ形)。1〜最大の範囲に収める
+  document.querySelectorAll("[data-stack]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const box = $("stackMax");
+      const max = parseInt(box.dataset.max, 10) || 15;
+      const now = parseInt(box.value, 10) || 0;
+      const next = Math.min(max, Math.max(1, now + parseInt(button.dataset.stack, 10)));
+      if (String(next) === box.value) return;
+      box.value = String(next);
+      send("/api/stack-max", { value: box.value });
+    });
+  });
 
   // --- 出力・印刷 ---
   $("btnOutput").addEventListener("click", () => doOutput());

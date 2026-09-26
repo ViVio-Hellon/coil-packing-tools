@@ -18,6 +18,8 @@ VBA -> Python 対応
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from typing import Dict, List, Optional, Tuple
 
 from ..models import FormState, TIP_CHOICES
@@ -60,6 +62,42 @@ class Result:
                 "level": self.level, **self.data}
 
 
+class Progress:
+    """時間のかかる処理の進み具合(重量計算_DB)。画面が `/api/progress` で聞く。
+
+    **何段目まで済んだか**を持つだけ。資材マスタの確かめ(Access だと数秒かかる)・
+    梱包ごとの計算・保存の段ごとに進める。画面は押してから答えが返るまで、
+    これを見て進み具合の棒を出す(現場の指摘: 重いのはいいが進み具合を出すこと)。
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._now: dict = {"active": False}
+
+    def begin(self, title: str, total: int) -> None:
+        with self._lock:
+            self._now = {"active": True, "title": title, "step": 0,
+                         "total": max(1, int(total)), "text": "", "startedAt": time.time()}
+
+    def step(self, text: str) -> None:
+        with self._lock:
+            if self._now.get("active"):
+                self._now["step"] = min(self._now["step"] + 1, self._now["total"])
+                self._now["text"] = text
+
+    def end(self) -> None:
+        with self._lock:
+            if self._now.get("active"):
+                self._now.update(active=False, step=self._now["total"], text="済みました")
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            out = dict(self._now)
+        if out.get("startedAt"):
+            out["elapsed"] = round(time.time() - out.pop("startedAt"), 1)
+        return out
+
+
 class Workflow:
     """業務フローの入口。routes からはこのクラスだけを呼ぶ。"""
 
@@ -72,6 +110,8 @@ class Workflow:
         #: 正常終了を要求されたときに呼ぶ関数（server.py が差し込む）。
         #: 基盤仕様書 2.8「まずアプリ自身へ正常終了を要求する」経路。
         self.shutdown_hook = None
+        #: 重量計算_DB の進み具合(画面が聞く)
+        self.progress = Progress()
         #: テスラ全サイズ画面の業務処理
         self.all_size = AllSizeService(store, cfg.kataban_csv_path)
         #: 共有マスタの ラベル台紙一覧（シート名・型番）
@@ -294,7 +334,19 @@ class Workflow:
 
     # ============================================================ 風袋計算
     def calc_tare(self, state: FormState) -> Result:
-        """VBA ``CommandButton16_Click``（重量計算_DB）。"""
+        """VBA ``CommandButton16_Click``（重量計算_DB）。
+
+        段ごとに `self.progress` を進める(画面の進み具合の棒)。計算の中身は変えない。
+        """
+        coils = [n for n in (4, 3, 2, 1) if str(state.coil_h.get(n, "") or "").strip()]
+        # 資材マスタの確かめ + 梱包ごと + ラベルへ写す + 保存
+        self.progress.begin("重量計算", 3 + len(coils))
+        try:
+            return self._calc_tare(state)
+        finally:
+            self.progress.end()
+
+    def _calc_tare(self, state: FormState) -> Result:
         # VBA: IsAllCoilEmpty なら何もしない
         if state.all_coil_empty():
             return Result(True, "本数が入力されていません", "warn",
@@ -311,6 +363,7 @@ class Workflow:
         if msg is not None:
             return Result(False, msg, "warn", {"state": state.to_dict()})
 
+        self.progress.step("資材マスタを確かめています")
         try:
             # 「計算」を押した瞬間は **必ずマスタを確かめる**。
             # 鮮度チェックの間隔（既定 300 秒）に隠れて、
@@ -338,6 +391,7 @@ class Workflow:
             if raw == "":
                 continue
             coil_text = val(raw)
+            self.progress.step(f"{TARE_TITLE[coil_no].rstrip(':')} を計算しています")
 
             mat = TC.calculate_materials(
                 table, coil_text, coil_no, width, state.tip, cb_key, ob_idx,
@@ -359,9 +413,11 @@ class Workflow:
             results[coil_no] = payload
 
         # VBA: ラベル転記CK / ラベル転記OP
+        self.progress.step("ラベルへ写しています")
         transferred = self._transfer_coil_info(state)
 
         # この計算に使った入力を控えておく（印刷時の食い違い検出用）
+        self.progress.step("保存しています")
         self.store.set_kv(self._CALC_INPUT_KEY, self._calc_fingerprint(state))
 
         self.save_state(state)
