@@ -1158,6 +1158,12 @@ class PageRoutes:
                 f'<div class="card"><h2>{esc(group)}</h2>'
                 f'<div class="setgrid">{"".join(fields)}</div></div>')
 
+        if S.integrated(self.cfg):
+            # 統合版: 統合アプリが決める項目は、ここでは扱わないことを知らせる
+            owned = "".join(f'<li>{esc(why)}</li>' for why in S.INTEGRATED_OWNED.values())
+            blocks.append(f'<div class="card"><h2>コイル梱包ツールで決まる項目</h2>'
+                          f'<ul class="hint">{owned}</ul></div>')
+
         local_path = self.cfg.local_config_path
         app_path = getattr(self.cfg, "app_config_used", self.cfg.app_config_path)
         has_local = os.path.exists(local_path)

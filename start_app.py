@@ -242,6 +242,18 @@ def start(mode: str, *, open_browser: bool = True) -> int:
             return 0
         log().info("多重起動の判定: %s", guard.reason)
 
+        # --- 統合前の単体版が動いていないか(同じ手元のデータを使う) ---
+        legacy = launch_guard.find_legacy_instances()
+        if legacy:
+            names = "、".join(x.describe() for x in legacy)
+            log().warning("統合前の単体版が動いています: %s", names)
+            raise StartupError(
+                f"統合前の単体版が動いています: {names}",
+                "単体版と統合版は同じデータ(作業状態・手元DB・設定)を使うので、"
+                "同時には動かせません。単体版の画面を閉じるか、単体版のフォルダの "
+                "stop.bat で止めてから、もう一度起動してください。"
+                "単体版の Start.vbs やショートカットは消しておいてください。")
+
         # --- ポート選び ---
         port = launch_guard.pick_port(mode)
         if port is None:

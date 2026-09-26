@@ -118,6 +118,8 @@ def create_app(mode: str = modes.MAIN, *, token: Optional[str] = None,
                               **{m["key"]: m["version"] for m in loaded}}
     app.config["VERSION_SET"] = versions.version_set(app.config["VERSIONS"])
     _install_tab_alive(app, [m["prefix"] for m in loaded])
+    _install_boot_redirect(app, loaded)
+    _install_shutdown_guard(app, loaded)
 
     @app.errorhandler(404)
     def _not_found(_e):                         # noqa: ANN202 - Flaskのフック
@@ -186,6 +188,71 @@ def _install_tab_alive(app: Flask, prefixes: list) -> None:
 
 
 # ------------------------------------------------------------------
+# 準備中の入口
+# ------------------------------------------------------------------
+#: 待機画面の「待たずに使い始める」の行き先(準備中でも統合画面を出す)
+SKIP_WAIT_URL = "/?go=1"
+
+
+def _install_boot_redirect(app: Flask, modules: list) -> None:
+    """準備中に機能の入口(`/details/` など)を開いたら、統合アプリの待機画面へ回す。
+
+    移植元の各機能は入口で自分の待機画面を出していた。統合版でそのまま出すと、
+    待機画面が問い合わせる `/api/health` は統合アプリのもので、アプリの ID が
+    食い違い「別のアプリが同じポートを使っています」と出て止まっていた(統合版で直した)。
+    待機画面は統合アプリの1つにまとめる。準備が終わったあとは各機能の入口のまま。
+
+    **入口が業務画面そのもの**の機能(ペナラベルの `/pena/`)は回さない ──
+    「待たずに使い始める」で入った統合画面の枠がそこを開くため。
+    """
+    roots = set()
+    for m in modules:
+        prefix = (m.get("prefix") or "").rstrip("/")
+        if prefix and (m.get("home") or "").rstrip("/") != prefix:
+            roots.update({prefix, prefix + "/"})
+
+    @app.before_request
+    def _to_boot_screen():                      # noqa: ANN202 - Flaskのフック
+        if request.path in roots and not current_app.config.get("READY"):
+            return redirect("/")
+        return None
+
+
+# ------------------------------------------------------------------
+# 機能の停止口
+# ------------------------------------------------------------------
+def _install_shutdown_guard(app: Flask, modules: list) -> None:
+    """機能の停止口(`/material/api/shutdown` など)にも、取り込み中の確認を掛ける。
+
+    機能の停止口は移植元のままで、呼ばれると**プロセスごと**止める ── 統合版では
+    3機能とも終わる。統合アプリの停止口(`/api/shutdown`)は、資材計算の取り込みの
+    途中なら 409 で断るが、機能の停止口はその確認を飛ばしていた(資材計算の帯の
+    「終了」がこれを呼ぶ。移植漏れの点検で見つかった)。取り込みの途中で止めると、
+    DBが中途半端な状態で残る。`{"force": true}` なら中断してでも止める(同じ決まり)。
+
+    トークンの確認は機能の側に任せる(ここではトークンが正しいときだけ断る。
+    知らない相手に「何が走っているか」を返さない)。
+    """
+    paths = {(m.get("prefix") or "").rstrip("/") + "/api/shutdown"
+             for m in modules if m.get("prefix")}
+
+    @app.before_request
+    def _guard_module_shutdown():               # noqa: ANN202 - Flaskのフック
+        if request.method != "POST" or request.path not in paths:
+            return None
+        if not security.token_ok(current_app.config["TOKEN"]):
+            return None
+        body = request.get_json(silent=True) or {}
+        running = _busy_labels()
+        if running and not body.get("force"):
+            log.info("機能の停止口を断りました(実行中: %s)", ", ".join(running))
+            return jsonify({"ok": False, "stopped": False, "reason": "busy", "running": running,
+                            "message": "実行中の処理があります: " + "、".join(running)
+                                       + "。終わってから終了してください"}), 409
+        return None
+
+
+# ------------------------------------------------------------------
 # 統合画面と、統合アプリ自身の経路
 # ------------------------------------------------------------------
 def _shell_blueprint() -> Blueprint:
@@ -193,16 +260,23 @@ def _shell_blueprint() -> Blueprint:
 
     @bp.get("/")
     def index():
-        """準備が終わるまでは起動待機画面、終わっていれば統合画面。"""
+        """準備が終わるまでは起動待機画面、終わっていれば統合画面。
+
+        **`?go=1` なら準備中でも統合画面を出す**(待機画面の「待たずに使い始める」)。
+        移植元の梱包明細は、取り込み中でも業務画面へ入れた(共有が遅い端末で
+        最大 150 秒待たせないため)。統合画面は準備完了を待つので、印が無いと
+        押しても同じ待機画面に戻っていた(統合版で直した)。3機能の画面そのものは
+        準備完了を見ないので、そのまま使える。
+        """
         conf = current_app.config
-        if not conf["READY"]:
+        if not conf["READY"] and request.args.get("go") != "1":
             return boot_screen.render(
                 display_name=conf["DISPLAY_NAME"],
                 version_label=app_config.version_label(),
                 token=conf["TOKEN"],
                 app_id=conf["APP_ID"],
                 poll_ms=app_config.job_poll_ms(),
-                home_url="/",
+                home_url=SKIP_WAIT_URL,
             )
         return render_template(
             "index.html",

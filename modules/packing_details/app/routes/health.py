@@ -17,6 +17,7 @@ from flask import Blueprint, current_app, jsonify, redirect, request
 
 # `config` は関数の中で `current_app.config` に使っているので、
 # 別名で入れる
+from common import app_config as _integrated_app_config
 from modules.packing_details.meisai import app_config, screen
 from modules.packing_details.meisai import config as app_paths
 from modules.packing_details.meisai.logging_utils import get_logger
@@ -84,8 +85,11 @@ def health():
         "version": config["VERSION"],
         # **どのフォルダの、どの版が動いているか。**
         # 「入れ替えたのに古いまま」を調べるとき、これが無いと
-        # 端末に行って確かめることになる
-        "app_root": str(app_config.APP_ROOT),
+        # 端末に行って確かめることになる。
+        # 【統合版】フォルダは統合アプリのもの(Start.vbs がある所)。機能のコードの
+        # フォルダ(modules\packing_details)は module_root に出す
+        "app_root": str(_integrated_app_config.APP_ROOT),
+        "module_root": str(app_config.APP_ROOT),
         # **どのPythonで動いているか。** 端末ごとに入っている版が
         # 違うことがあり、「あの端末だけ動かない」の原因になる
         "python": platform.python_version(),

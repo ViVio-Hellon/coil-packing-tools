@@ -1,7 +1,7 @@
 {
   "app_id": "nlm.coil-packing-tools",
   "display_name": "コイル梱包ツール",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "monitor_level": 2,
 
   "local_dir_name": "CoilPackingTools",

@@ -198,6 +198,8 @@ def summary(cfg: Config) -> Dict[str, Any]:
     bundle = read()
     groups: List[Dict[str, Any]] = []
     for key, label, group, default in items():
+        if S.integrated(cfg) and key in S.INTEGRATED_OWNED:
+            continue                    # 統合版: 統合アプリが決める項目は配らない
         if not groups or groups[-1]["group"] != group:
             groups.append({"group": group, "items": []})
         groups[-1]["items"].append({"key": key, "label": label,
@@ -236,6 +238,9 @@ def export(password: str, keys: List[str], cfg: Config) -> Result:
     if not S.password_ok(password):
         return Result(False, "配布設定を書き出すには合言葉が要ります。",
                       REFUSE_NEED_PASSWORD)
+    if S.integrated(cfg):
+        # 統合版: 統合アプリが決める項目(使用ポート)は書き出さない
+        keys = [k for k in keys if k not in S.INTEGRATED_OWNED]
     known = item_keys()
     unknown = [k for k in keys if k not in known]
     if unknown:

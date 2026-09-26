@@ -17,6 +17,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from common import app_config as _integrated_app_config
 from modules.packing_material_calculation.coil_tool import (admin_session, app_config, config, data_sync,
                        distribution, source_db, staff, user_settings)
 from modules.packing_material_calculation.coil_tool.presenters import master as master_presenter
@@ -155,11 +156,11 @@ def _about() -> dict[str, Any]:
     「動かない」と言われたときに最初に聞くことがこの一式だから。
     画面で読めれば、端末に入って調べなくても電話で確かめられる。
     """
+    # 【統合版】ポートとアプリ本体は**統合アプリのもの**を出す。機能の config/app.json の
+    # ポートは使われない(統合アプリが決める)ので、出すと「8740 (設定は 8733)」と
+    # 繰り上がったように見えていた。版・アプリID・設定ファイルは機能のもの
     mode = str(conf().get("MODE", ""))
-    try:
-        port = app_config.port(mode) if mode else 0
-    except ValueError:
-        port = 0
+    port = int(conf().get("PORT", 0) or 0)
     return {
         "display_name": app_config.display_name(),
         "version": app_config.version(),
@@ -170,7 +171,8 @@ def _about() -> dict[str, Any]:
         "actual_port": int(conf().get("PORT", 0) or 0),
         "python": sys.version.split()[0],
         "python_exe": sys.executable,
-        "app_root": str(app_config.APP_ROOT),
+        "app_root": str(_integrated_app_config.APP_ROOT),
+        "module_root": str(app_config.APP_ROOT),
         "app_config_path": str(app_config.CONFIG_PATH),
         "local_root": str(app_config.local_root()),
         # 版の書き方が壊れていても起動は止めない。**ここに出して気づかせる**

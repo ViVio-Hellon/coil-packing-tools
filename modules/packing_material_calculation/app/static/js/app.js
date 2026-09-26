@@ -29,9 +29,23 @@ if (worker) {
 // ---- 終了 --------------------------------------------------------
 const quit = $('#quit');
 if (quit) {
+  // 統合画面の中(iframe)では、終了すると3機能とも終わる
+  const inShell = window.top !== window;
   quit.addEventListener('click', async () => {
-    if (!confirm('このアプリを終了します。よろしいですか？')) return;
-    await call('/api/shutdown', {});
+    if (!confirm(inShell ? 'このアプリを終了します。3つの機能とも終わります。よろしいですか？'
+                         : 'このアプリを終了します。よろしいですか？')) return;
+    const r = await call('/api/shutdown', {});
+    // 【統合版】断られたら理由を出す(取り込みの途中など)。以前は結果を見ずに
+    // 「終了しました」と出していた
+    if (!r || r.ok === false) {
+      toast((r && r.message) || '終了できませんでした', 'warn');
+      return;
+    }
+    // 統合画面の外枠にも知らせる(外枠は「バックエンドと通信できません」ではなく
+    // 「終了しました」を出す)
+    if (inShell) {
+      try { window.top.postMessage({ type: 'cpt:stopped' }, location.origin); } catch (e) { /* 無視 */ }
+    }
     document.body.innerHTML =
       '<p style="padding:40px;font-size:16px">終了しました。このタブは閉じてください。</p>';
   });

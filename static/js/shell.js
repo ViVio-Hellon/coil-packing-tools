@@ -159,6 +159,9 @@
     return fetch("/api/health", { cache: "no-store" })
       .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
       .then(function (j) {
+        // 止めた直後は、まだ答えが返ることがある(止めるのは少し遅れる)。
+        // 「終了しました」を「接続OK」で上書きしない
+        if (stopped) return true;
         if (checkRestart(j.pid)) return true;
         misses = 0;
         setOffline(false);
@@ -240,6 +243,20 @@
   }, CLOCK_TICK_MS);
 
   // ---------------------------------------------------------- 終了
+  function markStopped() {
+    stopped = true;
+    setConn("", "終了しました");
+    var box = $("stopped"); if (box) box.hidden = false;
+    panes.forEach(function (p) { p.hidden = true; });
+    if (quit) quit.disabled = true;
+  }
+  // 機能の画面の「終了」(資材計算の帯)で止まったときも、同じ表示にする。
+  // 知らせが無いと、外枠は「バックエンドと通信できません」を出していた
+  window.addEventListener("message", function (e) {
+    if (e.origin !== location.origin || !e.data || e.data.type !== "cpt:stopped") return;
+    markStopped();
+  });
+
   var quit = $("quit");
   if (quit) {
     quit.addEventListener("click", function () {
@@ -251,10 +268,7 @@
         .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
         .then(function (res) {
           if (res.body && res.body.stopped) {
-            stopped = true;
-            setConn("", "終了しました");
-            var box = $("stopped"); if (box) box.hidden = false;
-            panes.forEach(function (p) { p.hidden = true; });
+            markStopped();
             return;
           }
           quit.disabled = false;

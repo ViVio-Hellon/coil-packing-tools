@@ -244,6 +244,82 @@ class TokenTest(unittest.TestCase):
                 self.assertEqual(res.status_code, 403)
 
 
+class BootTest(unittest.TestCase):
+    """準備中(起動待機画面が出ているあいだ)の入口。"""
+
+    def setUp(self):
+        self.app = _make_app(self)
+        self.app.config["READY"] = False
+        self.client = self.app.test_client()
+
+    def test_待たずに使い始めるで統合画面に入れる(self):
+        """移植元の梱包明細は取り込み中でも業務画面へ入れた。同じ画面に戻らないこと。"""
+        import re
+        html = self.client.get("/").get_data(as_text=True)
+        (href,) = re.findall(r'id="skip" href="([^"]+)"', html)
+        self.assertEqual(href, "/?go=1")
+        shell = self.client.get(href).get_data(as_text=True)
+        self.assertEqual(shell.count("<iframe"), 3, "統合画面が出ない")
+        # 3機能の画面そのものは準備中でも開ける
+        for path in ("/details/meisai", "/pena/", "/material/calc"):
+            self.assertEqual(self.client.get(f"{path}?t={TOKEN}").status_code, 200, path)
+
+    def test_準備中に機能の入口を開くと統合アプリの待機画面へ(self):
+        """機能の入口で機能の待機画面を出すと、アプリIDが食い違って止まっていた。"""
+        for path in ("/details/", "/details", "/material/", "/material"):
+            res = self.client.get(path)
+            self.assertEqual(res.status_code, 302, path)
+            self.assertEqual(res.headers["Location"], "/", path)
+        # 入口が業務画面そのもの(ペナラベル)は回さない(統合画面の枠が開くため)
+        self.assertEqual(self.client.get(f"/pena/?t={TOKEN}").status_code, 200)
+
+    def test_準備が終わったら機能の入口は元のまま(self):
+        self.app.config["READY"] = True
+        self.assertIn("/details/meisai", self.client.get("/details/").headers["Location"])
+        self.assertIn("/material/calc", self.client.get(f"/material/?t={TOKEN}").headers["Location"])
+
+
+class ModuleInfoTest(unittest.TestCase):
+    """機能の画面に出る「どこで・どのポートで動いているか」は統合アプリのもの。"""
+
+    def setUp(self):
+        self.app = _make_app(self)
+        self.client = self.app.test_client()
+
+    def test_資材計算のこのアプリについて(self):
+        from common import app_config
+        body = self.client.get("/material/api/settings", headers={"X-App-Token": TOKEN}).get_json()
+        about = (body.get("view") or body)["about"]
+        self.assertEqual(about["port"], about["actual_port"], "繰り上がったように見える")
+        self.assertEqual(about["app_root"], str(app_config.APP_ROOT))
+        self.assertTrue(about["module_root"].endswith("packing_material_calculation"))
+
+    def test_梱包明細のバージョン情報(self):
+        from common import app_config
+        body = self.client.get("/details/api/health").get_json()
+        self.assertEqual(body["app_root"], str(app_config.APP_ROOT))
+        self.assertTrue(body["module_root"].endswith("packing_details"))
+
+    def test_ペナラベルの使用ポートは統合アプリが決める(self):
+        """画面に出さない・保存しない・配布設定にも入れない。単体で動かす試験では従来どおり。"""
+        import re
+        from modules.packing_pena_label import server as pena_server
+        from modules.packing_pena_label.app.services import distribution as D
+        from modules.packing_pena_label.app.services import settings as S
+        html = self.client.get("/pena/settings").get_data(as_text=True)
+        self.assertIn('data-field="db_busy_timeout_ms"', html)          # 目印の書き方の確認
+        self.assertNotIn('data-field="port"', html)
+        self.assertNotIn('data-dist-item="port"', html)
+        self.assertIn("config/app.json で決まります", html)
+        cfg = pena_server.context().cfg
+        self.assertTrue(S.integrated(cfg))
+        r = S.save({"port": 9000}, cfg)
+        self.assertTrue(r["ok"])
+        self.assertNotIn("port", S.load_local_overrides(cfg))
+        self.assertNotIn("port", [k for g in D.summary(cfg)["groups"] for k in
+                                  (i["key"] for i in g["items"])])
+
+
 class TabAliveInjectionTest(unittest.TestCase):
     """別のタブで開く画面(帳票・印刷ビュー)に心拍のスクリプトが入る。
 
@@ -412,6 +488,48 @@ class AliveAndShutdownTest(unittest.TestCase):
         self.client.post("/material/api/alive", json={"closing": True, "screen": "m-1"})
         self.client.post("/material/api/alive", json={"hidden": False})
         self.assertIsNone(self.watch._leaving_at)
+
+    def test_機能の停止口も取り込み中は止めない(self):
+        """機能の停止口も、止めるのはプロセスごと(3機能とも)。統合アプリの停止口と同じく断る。"""
+        import app as app_module
+        from modules import packing_material_calculation as material
+        from modules import packing_details as details, packing_pena_label as pena
+        called = []
+        for m in (material, details, pena):
+            m.set_shutdown_hook(lambda: called.append("stop"))
+        self.addCleanup(lambda: [m.set_shutdown_hook(None) for m in (material, details, pena)])
+        original = (material.busy, material.busy_labels)
+        material.busy = lambda: True
+        material.busy_labels = lambda: ["起動時の自動取り込み"]
+        self.addCleanup(setattr, material, "busy", original[0])
+        self.addCleanup(setattr, material, "busy_labels", original[1])
+        h = {"X-Tool-Token": TOKEN, "X-App-Token": TOKEN}
+        for path in ("/material/api/shutdown", "/pena/api/shutdown", "/details/api/shutdown"):
+            res = self.client.post(path, json={}, headers=h)
+            self.assertEqual(res.status_code, 409, path)
+            self.assertEqual(res.get_json()["running"], ["起動時の自動取り込み"], path)
+        # トークンが無ければ機能の側が断る(何が走っているかは返さない)
+        res = self.client.post("/material/api/shutdown", json={})
+        self.assertNotEqual(res.status_code, 200)
+        self.assertNotIn("running", res.get_json() or {})
+        time.sleep(0.6)
+        self.assertEqual(called, [], "取り込み中なのに止めた")
+        # force なら止める(統合アプリの停止口と同じ決まり)
+        res = self.client.post("/material/api/shutdown", json={"force": True}, headers=h)
+        self.assertEqual(res.status_code, 200)
+        # 止める処理は少し遅れて走る。片付け(停止の仕方を外す)より先に済ませる
+        time.sleep(0.8)
+        self.assertEqual(called, ["stop"])
+
+    def test_機能の停止口は取り込みが無ければ従来どおり(self):
+        from modules import packing_material_calculation as material
+        called = []
+        material.set_shutdown_hook(lambda: called.append("stop"))
+        self.addCleanup(material.set_shutdown_hook, None)
+        res = self.client.post("/material/api/shutdown", json={}, headers={"X-App-Token": TOKEN})
+        self.assertEqual(res.status_code, 200)
+        time.sleep(0.8)
+        self.assertEqual(called, ["stop"])
 
     def test_停止はトークン必須(self):
         self.assertEqual(self.client.post("/api/shutdown", json={}).status_code, 401)

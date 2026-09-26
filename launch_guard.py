@@ -505,6 +505,96 @@ def _replace_stale(mode: str, info: "LockInfo",
                        reason=f"別の版が動いています({changes})")
 
 
+# ------------------------------------------------------------------
+# 統合前の単体版(同じ手元のデータを使う)
+# ------------------------------------------------------------------
+@dataclass
+class LegacyInstance:
+    """動いている単体版。"""
+
+    label: str
+    port: int
+    pid: int = 0
+
+    def describe(self) -> str:
+        return f"{self.label}(ポート {self.port}" + (f"・pid {self.pid}" if self.pid else "") + ")"
+
+
+#: 統合前の単体版: (呼び名, アプリID, 既定のポート)。
+#: 3つとも **統合版と同じ手元のデータ**(%LOCALAPPDATA% の PackingDetails・
+#: PackingPenaLabel・CoilMaterialTool)を読み書きする
+LEGACY_APPS = (
+    ("梱包明細(単体版)", "nlm.packing-details", 8733),
+    ("ペナラベル(単体版)", "PackingPenaLabel", 8731),
+    ("資材計算(単体版)", "nlm.coil-material-tool", 8733),
+)
+
+
+def _legacy_lock_files() -> dict:
+    """単体版が起動中に残す記録(pid とポート)の置き場所。統合版と同じ手元の領域。"""
+    out: dict = {}
+    try:
+        from modules.packing_details.meisai import app_config as details_cfg
+        out["nlm.packing-details"] = details_cfg.local_dir("runtime") / "meisai.lock"
+    except Exception:                                   # noqa: BLE001 - 判定で起動を止めない
+        pass
+    try:
+        from modules.packing_material_calculation.coil_tool import app_config as material_cfg
+        out["nlm.coil-material-tool"] = material_cfg.local_dir("runtime") / "main.lock"
+    except Exception:                                   # noqa: BLE001
+        pass
+    try:
+        from modules.packing_pena_label.app.config import load_config
+        out["PackingPenaLabel"] = Path(load_config().runtime_dir) / "instance.json"
+    except Exception:                                   # noqa: BLE001
+        pass
+    return out
+
+
+def _answers_as(port: int, app_id: str) -> bool:
+    health = probe_health(port, timeout=LEGACY_PROBE_SEC)
+    if not health:
+        return False
+    return (health.get("app_id") or health.get("appId")) == app_id
+
+
+#: 単体版の起動確認を待つ上限(秒)。**統合版の起動を遅らせない**よう短く
+LEGACY_PROBE_SEC = 0.6
+
+
+def find_legacy_instances() -> list:
+    """**統合前の単体版**が動いていないか。動いていれば `LegacyInstance` の並び。
+
+    【なぜ要るのか】
+    統合版は単体版と**同じ手元のデータ**(作業状態・手元DB・設定)を使う。
+    多重起動の印(ロック)は統合版のものしか見ないので、移行の途中で単体版の
+    Start.vbs を押すと、両方が動いて同じデータを書き換える(移植漏れの点検で
+    見つかった)。ペナラベルでは、画面の検査番号と刷られる検査番号が
+    食い違いうる。統合版はここで見つけたら起動しない(単体版は自動では止めない ──
+    保存前の作業を持っているかもしれないため)。
+
+    見分け方: 単体版が残す記録(pid とポート)を読み、そのポートの起動確認が
+    単体版のアプリIDを返せば動いている。記録が無いときは既定のポートも見る。
+    """
+    found: list = []
+    locks = _legacy_lock_files()
+    for label, app_id, default_port in LEGACY_APPS:
+        port, pid = 0, 0
+        path = locks.get(app_id)
+        if path is not None:
+            try:
+                data = json.loads(Path(path).read_text(encoding="utf-8"))
+                port, pid = int(data.get("port") or 0), int(data.get("pid") or 0)
+            except (OSError, ValueError, TypeError):
+                port, pid = 0, 0
+        if port and pid and is_process_alive(pid) and _answers_as(port, app_id):
+            found.append(LegacyInstance(label, port, pid))
+            continue
+        if _answers_as(default_port, app_id):
+            found.append(LegacyInstance(label, default_port))
+    return found
+
+
 def request_shutdown(port: int, token: str) -> bool:
     """`POST /api/shutdown` を送る。受け付けられたら `True`。
 

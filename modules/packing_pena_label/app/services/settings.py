@@ -188,6 +188,19 @@ SETTINGS: List[SettingSpec] = [
 
 SETTINGS_BY_KEY = {s.key: s for s in SETTINGS}
 
+#: 統合版(コイル梱包ツールの中で動くとき)は、この画面で扱わない項目と、その理由。
+#: 使用ポートは統合アプリが決める(`modules/packing_pena_label/server.py` が要求のたびに
+#: 統合アプリのポートを入れ直す)。画面に残すと、変えても効かず、由来の表示も誤る
+#: (移植漏れの点検で見つかった)。単体で動かす試験(入口なし)では従来どおり扱う
+INTEGRATED_OWNED = {
+    "port": "使用ポートはコイル梱包ツール(統合アプリ)の config/app.json で決まります。",
+}
+
+
+def integrated(cfg) -> bool:
+    """統合版の中で動いているか(入口 `/pena` が付いている)。"""
+    return bool(getattr(cfg, "url_prefix", ""))
+
 #: パス系の変更に要る合言葉。
 #:
 #: 参照先を書き換えると**全員の計算に影響する**（別のマスタを読み始める）。
@@ -334,6 +347,8 @@ def describe(cfg: Config) -> List[dict]:
     sources = getattr(cfg, "sources", {}) or {}
     out = []
     for spec in SETTINGS:
+        if integrated(cfg) and spec.key in INTEGRATED_OWNED:
+            continue
         value = getattr(cfg, spec.key, "")
         layer = sources.get(spec.key, "default")
         item = {
@@ -373,7 +388,10 @@ def save(values: Dict[str, Any], cfg: Config) -> Dict[str, Any]:
     """検証して端末ごとの設定へ保存する。
 
     戻り値には「再起動が必要な項目」を入れて、画面で知らせる。
+    統合版では、統合アプリが決める項目(`INTEGRATED_OWNED`)は受け取っても保存しない。
     """
+    if integrated(cfg):
+        values = {k: v for k, v in values.items() if k not in INTEGRATED_OWNED}
     errors = validate_all(values)
     if errors:
         return {"ok": False, "level": "warn", "errors": errors,

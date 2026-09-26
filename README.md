@@ -43,7 +43,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.0.2 [梱包明細] [ペナラベル] [資材計算]   接続OK [終了]
+上の帯   コイル梱包ツール VER1.0.3 [梱包明細] [ペナラベル] [資材計算]   接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
@@ -110,10 +110,10 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.0.2 | `config/app.json` |
-| 梱包明細 | 0.13.2 | `modules/packing_details/config/app.json` |
-| ペナラベル | 1.5.1 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
-| 資材計算 | 0.2.1 | `modules/packing_material_calculation/config/app.json` |
+| コイル梱包ツール(統合ツール) | 1.0.3 | `config/app.json` |
+| 梱包明細 | 0.13.3 | `modules/packing_details/config/app.json` |
+| ペナラベル | 1.5.2 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| 資材計算 | 0.2.2 | `modules/packing_material_calculation/config/app.json` |
 
 機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
 だけを変えたら、統合ツールの版だけを上げます。決まりの全体は `docs/変更履歴.md`。
