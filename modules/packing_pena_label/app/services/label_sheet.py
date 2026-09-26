@@ -499,6 +499,32 @@ def ink_outside_safe_area(stock: LabelStock) -> List[str]:
     return out
 
 
+#: 較正シートの段の見出しの高さ（mm。.rowlab の font-size 2.6mm の行の箱。実測 3.4mm）
+ROWLAB_H = 3.8
+
+
+def _last_rowlab_top(stock: LabelStock, ry: float) -> float:
+    """最後の段の見出し（「10段ぶん = 297.0mm」）の上端。
+
+    段の線のすぐ上に置くが、**紙の下端から safe_margin より内側**に収める
+    （紙の下端に重なる線の見出しは、線のすぐ上だと縁 約 4mm に入って刷れない）。
+    """
+    return min(ry - 4.2, stock.page_h - stock.safe_margin - ROWLAB_H)
+
+
+#: 較正シートの目盛りの帯（紙の上端から safe_margin + 7mm まで。大きい目盛りの長さ）
+TICK_BAND = 7.0
+
+
+def _rowlab_top(stock: LabelStock, ry: float) -> float:
+    """段の見出し（「2段目の上端 = 29.7mm」）の上端。段の線のすぐ下。
+
+    紙の上端に重なる 1 段目の線の見出しは、**目盛りの帯の下**まで下げる
+    （紙の上端から safe_margin より内側、かつ目盛りと重ならない）。
+    """
+    return max(ry + 0.4, stock.safe_margin + TICK_BAND + 0.5)
+
+
 def render_ruler_page(stock: LabelStock,
                       cal: Optional[Calibration] = None) -> str:
     """較正用の試し刷り。
@@ -515,9 +541,14 @@ def render_ruler_page(stock: LabelStock,
     cal = cal or Calibration()
     marks: List[str] = []
 
-    # 10mm ごとの目盛り（上端・左端）
+    # 10mm ごとの目盛り（上端・左端）。**紙の端から safe_margin より内側だけ**
+    # （端の 0mm・210mm の目盛りは縁に重なって刷れない。統合版で直した）
+    m = stock.safe_margin
     x = 0
     while x <= stock.page_w:
+        if x < m or x > stock.page_w - m:
+            x += 10
+            continue
         big = (x % 50 == 0)
         marks.append('<div class="tick h%s" style="left:%.3fmm;"></div>'
                      % (" big" if big else "", x))
@@ -527,6 +558,9 @@ def render_ruler_page(stock: LabelStock,
         x += 10
     y = 0
     while y <= stock.page_h:
+        if y < m or y > stock.page_h - m:
+            y += 10
+            continue
         big = (y % 50 == 0)
         marks.append('<div class="tick v%s" style="top:%.3fmm;"></div>'
                      % (" big" if big else "", y))
@@ -592,9 +626,9 @@ def render_ruler_page(stock: LabelStock,
         marks.append('<div class="rowline" style="top:%.3fmm;"></div>' % ry)
         marks.append('<div class="rowlab" style="top:%.3fmm;">%d段目の上端 '
                      '= %.1fmm</div>'
-                     % (ry + 0.4, r + 1, ry) if r < stock.rows else
+                     % (_rowlab_top(stock, ry), r + 1, ry) if r < stock.rows else
                      '<div class="rowlab" style="top:%.3fmm;">%d段ぶん '
-                     '= %.1fmm</div>' % (ry - 4.2, stock.rows, ry))
+                     '= %.1fmm</div>' % (_last_rowlab_top(stock, ry), stock.rows, ry))
 
     frames: List[str] = []
     for i in range(stock.per_page):
@@ -632,7 +666,9 @@ def render_ruler_page(stock: LabelStock,
             '画面の「大きさそのものが合わないとき」へ入れてください。<br>'
             '<b>段ピッチの確認</b>: 台紙の<b>一番下の段</b>の切れ目と赤い線が'
             '合っているか見てください（%d 段ぶんで %.1fmm）。<br>'
-            '%s（この紙もその状態で刷っています）／ 台紙 %s'
+            # 台紙の名前は別の行に。**最後の行を短く**して、右下の「N段ぶん」の
+            # 見出しと重ならないようにする（補正を入れると 1 行目が長くなる）
+            '%s（この紙もその状態で刷っています）<br>台紙 %s'
             '</div>'
             % (span, x0, stock.rows, total_y,
                LA.describe(cal.offset_x_mm, cal.offset_y_mm, cal.scale_pct),

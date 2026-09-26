@@ -43,7 +43,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.0.0 [梱包明細] [ペナラベル] [資材計算]   接続OK [終了]
+上の帯   コイル梱包ツール VER1.0.1 [梱包明細] [ペナラベル] [資材計算]   接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
@@ -110,9 +110,9 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.0.0 | `config/app.json` |
+| コイル梱包ツール(統合ツール) | 1.0.1 | `config/app.json` |
 | 梱包明細 | 0.13.1 | `modules/packing_details/config/app.json` |
-| ペナラベル | 1.5.0 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| ペナラベル | 1.5.1 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
 | 資材計算 | 0.2.0 | `modules/packing_material_calculation/config/app.json` |
 
 機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
@@ -126,14 +126,24 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 機能の画面が刷られます。ブラウザのメニューから印刷すると、見せている画面の1枚目の分しか
 出ないので、各画面の印刷ボタンか Ctrl+P を使ってください。
 
+**文字・罫線・バー・目盛りは、すべて紙の端から 5mm 以上内側に置きます**(プリンターは紙の縁
+約 4mm に刷れないため)。距離は印刷ダイアログの余白ではなく紙の中で取っているので、ダイアログが
+「デフォルト」でも「余白なし」でも同じ位置に刷れます。紙面を直したときは、開発用の PC で
+次を流して確かめてください(PyMuPDF と Playwright が要ります。現場の PC には要りません)。
+
+```
+python tools/print_edge_check.py
+```
+
 ## テスト
 
 ```
 python -m unittest discover -s modules/packing_details/tests -t .        # 梱包明細   463
-python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 566
+python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 575
 python -m pytest modules/packing_material_calculation/tests              # 資材計算   432
 python -m pytest tests                                                   # 統合       119
 python tools/smoke_shell.py                                              # 通し(配布前に一度)
+python tools/print_edge_check.py                                         # 印刷の端 5mm(紙面を直したら)
 ```
 
 3機能の試験は移植元のものを(import パスだけ直して)そのまま流しています。

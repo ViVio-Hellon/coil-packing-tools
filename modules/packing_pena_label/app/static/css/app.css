@@ -196,11 +196,25 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
 .lbl .cellref{font-size:9px; color:#9aa6b2}
 
 /* ---------- 印刷 ---------- */
+/* **紙の端から 5mm 以上内側に刷る**(統合版で直した)。プリンターは紙の縁
+   約 4mm に刷れない。プレビューは端まで描くので収まって見えるが、刷ると欠ける。
+
+   距離は `@page` の余白ではなく**紙の中(.page の padding)**で取る。
+   ・このファイルの下のほう(ラベル台紙)に `@page{margin:0}` があり、同じ
+     ファイルなので風袋計算・羅列・全サイズにも効いていた ── 上の `margin:8mm`
+     は打ち消され、中身が紙の端から刷られて見切れていた(移植元のまま)
+   ・印刷ダイアログの「余白なし」も `@page` の余白を 0 にする。ラベルは
+     「余白なし」で刷るので、ブラウザがその設定を覚えていると次の帳票も 0 になる
+   紙の中で取れば、ダイアログが「デフォルト」でも「なし」でも同じ位置に刷れる
+   (梱包明細・資材計算と同じ決まり)。2 枚目以降の紙の上端も同じだけ空ける
+   (box-decoration-break: clone)。
+   ラベル台紙・較正シート(.sheet)は mm の実寸で紙に置くので、中で空けない */
 @media print{
   :root{--bg:#fff}
   body{background:#fff; font-size:10pt}
   .no-print,.appbar,.appfoot,.toast{display:none !important}
-  .page{padding:0}
+  .page{padding:8mm; box-decoration-break:clone; -webkit-box-decoration-break:clone}
+  .page:has(.sheet){padding:0}
   .card,.block,.scroll{border-color:#000; box-shadow:none; max-height:none}
   .tbl th,.tbl td,.block td,.block th{border-color:#000}
   .tbl thead th{position:static; background:#eee !important;
@@ -208,8 +222,7 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
   .scroll{overflow:visible}
   .blocks{grid-template-columns:1fr 1fr}
   .block{break-inside:avoid}
-  @page{size:A4; margin:8mm}
-  .print-landscape @page{size:A4 landscape}
+  @page{size:A4; margin:0}
 }
 .printfoot{display:none}
 @media print{ .printfoot{display:flex; justify-content:space-between;
@@ -266,15 +279,21 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
 /* 較正シート: 段の境目を全段ぶん引く（段ピッチの確認用） */
 .rowline{position:absolute; left:0; right:0; height:0.2mm; background:#c0392b;
   opacity:.55; print-color-adjust:exact; -webkit-print-color-adjust:exact}
-.rowlab{position:absolute; right:1.5mm; font-size:2.6mm; color:#c0392b;
+.rowlab{position:absolute; right:6mm; font-size:2.6mm; color:#c0392b;
   font-family:Consolas,monospace}
 .label.guide.hdr{border-style:dashed}
 .gxy{position:absolute; right:1mm; bottom:1mm; font-size:2mm; color:#9aa6b2}
+/* 較正シートでは枠の番号・座標を紙の端から 5mm 以上内側へ(左列・右列・最下段の枠は
+   紙の端と接している)。ヘッダー帯の見出しは目盛りの下へ */
+.sheet.ruler .gno{left:6mm}
+.sheet.ruler .gxy{right:6mm; bottom:6mm}
+.sheet.ruler .label.hdr>.gno{top:13mm}
 
-/* 較正シートの目盛り */
+/* 較正シートの目盛り。**紙の端から 5mm の所から**引く(縁 約 4mm は刷れないので、
+   端から引くと目盛りがほとんど消える)。目盛りの位置(左端・上端から何 mm)は変えない */
 .sheet.ruler .tick{position:absolute; background:#c6cdd6}
-.sheet.ruler .tick.h{top:0; width:.2mm; height:4mm}
-.sheet.ruler .tick.v{left:0; height:.2mm; width:4mm}
+.sheet.ruler .tick.h{top:5mm; width:.2mm; height:4mm}
+.sheet.ruler .tick.v{left:5mm; height:.2mm; width:4mm}
 .sheet.ruler .tick.big{background:#16202c}
 .sheet.ruler .tick.h.big{height:7mm}
 .sheet.ruler .tick.v.big{width:7mm}
@@ -306,8 +325,9 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
   print-color-adjust:exact; -webkit-print-color-adjust:exact}
 .sheet.ruler .edgemark.h{height:.3mm}
 .sheet.ruler .edgemark.v{width:.3mm}
-.calinfo{position:absolute; left:6mm; bottom:4mm; font-size:2.6mm;
-  color:#16202c; line-height:1.6;
+/* 説明文は紙の端から 5mm 以上内側。最下段の段の線(10段目の上端)にかからない高さに収める */
+.calinfo{position:absolute; left:6mm; right:6mm; bottom:5.5mm; font-size:2.6mm;
+  color:#16202c; line-height:1.5;
   font-family:"Yu Gothic","游ゴシック",Meiryo,sans-serif}
 
 /* 配布設定（python-web-tools と同じく、項目を 1 行ずつ・複数列に並べる） */

@@ -71,9 +71,11 @@ class ShellTest(unittest.TestCase):
         self.assertEqual(html.count('role="tabpanel"'), 3)
 
     def test_統合画面はタブの版も出す(self):
+        from common import versions
         html = self.client.get("/").data.decode()
-        for version in ("0.13.1", "1.5.0", "0.2.0"):
-            self.assertIn(f"VER{version}", html)
+        v = versions.all_versions()
+        for key in ("details", "pena", "material"):
+            self.assertIn(f"VER{v[key]}", html)
 
     def test_健康確認は統合アプリの身元と3機能の身元(self):
         body = self.client.get("/api/health").get_json()
@@ -179,11 +181,13 @@ class PrefixTest(unittest.TestCase):
 
     def test_版の印は機能ごと(self):
         from flask import url_for
+        from common import versions
+        v = versions.all_versions()
         with _make_app(self).test_request_context("/"):
-            self.assertIn("v=0.13.1", url_for("details.static", filename="css/meisai.css"))
-            self.assertIn("v=0.2.0", url_for("material.static", filename="js/core.js"))
-            self.assertIn("v=1.5.0", url_for("pena.static", filename="js/app.js"))
-            self.assertIn("v=1.0.0", url_for("static", filename="js/shell.js"))
+            self.assertIn(f"v={v['details']}-", url_for("details.static", filename="css/meisai.css"))
+            self.assertIn(f"v={v['material']}-", url_for("material.static", filename="js/core.js"))
+            self.assertIn(f"v={v['pena']}-", url_for("pena.static", filename="js/app.js"))
+            self.assertIn(f"v={v['app']}-", url_for("static", filename="js/shell.js"))
 
 
 class TokenTest(unittest.TestCase):
