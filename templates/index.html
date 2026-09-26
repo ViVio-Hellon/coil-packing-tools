@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block tabs %}
+{#
+  タブ。並びは `app.all_modules()` の順(= 業務の順: 明細 → ラベル → 資材)。
+  `aria-selected` で見た目と読み上げの両方に現在地を出す。
+#}
+<nav class="tabs" role="tablist" aria-label="機能">
+  {% for tab in tabs %}
+  <button class="tab" type="button" role="tab" id="tab-{{ tab.key }}"
+          data-key="{{ tab.key }}" aria-controls="pane-{{ tab.key }}"
+          aria-selected="{{ 'true' if loop.first else 'false' }}"
+          title="{{ tab.display_name }} VER{{ tab.version }}">
+    <span class="tab__label">{{ tab.label }}</span>
+    <span class="tab__ver">VER{{ tab.version }}</span>
+  </button>
+  {% endfor %}
+</nav>
+{% endblock %}
+
+{% block main %}
+{#
+  各機能の画面は iframe。**隠すだけで外さない** ── 外すと入力の途中の値・
+  条番号の盤面・心拍が消える(タブを戻したら白紙、では困る)。
+  3つとも最初に開く。同じPCの中なので重くない。
+#}
+<main class="panes" id="panes">
+  {% for tab in tabs %}
+  <section class="pane" id="pane-{{ tab.key }}" role="tabpanel"
+           aria-labelledby="tab-{{ tab.key }}" {% if not loop.first %}hidden{% endif %}>
+    <iframe class="pane__frame" name="cpt-{{ tab.key }}"
+            title="{{ tab.display_name }}"
+            src="{{ tab.home }}?t={{ token }}"></iframe>
+  </section>
+  {% endfor %}
+</main>
+{% endblock %}

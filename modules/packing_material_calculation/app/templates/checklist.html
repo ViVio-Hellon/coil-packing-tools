@@ -1,0 +1,35 @@
+{% extends "material_base.html" %}
+{% block title %}チェックリスト — {{ ribbon.display_name }}{% endblock %}
+
+{% block main %}
+<div class="head">
+  <h1>資材発注管理チェックリスト</h1>
+  <p id="sub"></p>
+</div>
+
+<div class="btnrow">
+  <a class="btn btn--print" id="print" target="_blank" rel="noopener">印刷</a>
+  <a class="btn btn--nav" id="to-order">発注票へ</a>
+  <button class="btn btn--danger" type="button" id="clear">全部消す</button>
+</div>
+
+<div id="note"></div>
+
+<div class="wrap">
+  <table class="grid-table">
+    <thead>
+      <tr>
+        <th>行</th><th>確定</th><th>依頼日</th><th>LotNo</th><th>用途名</th>
+        <th>パレット種類</th><th>台数</th><th>営業納期</th><th>ｺｲﾙ間</th>
+        <th>ﾘﾌﾟﾗ長さ</th><th>ﾘﾌﾟﾗ本数</th><th>ﾘﾌﾟﾗｻｲｽﾞ</th><th>緩衝材</th>
+        <th>依頼者</th><th>入荷日</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block script %}
+<script type="module" src="{{ url_for('material.static', filename='js/views/checklist.js') }}"></script>
+{% endblock %}

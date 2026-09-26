@@ -1,0 +1,453 @@
+/*
+  このアプリ固有の見た目。
+  色は必ず tokens.css から取る(直値を書かない)。
+
+  【画面の色は業務情報】
+  VBA は「どの規則で決まったか」を欄の色で伝えていた。
+    赤   … その規則が効いた(重量 / 枚数 / 高さ / 包装仕様)
+    水色 … 1本積み不可
+  色だけに頼らないよう、印の文字も一緒に出す。
+*/
+
+/* ---- レール ----
+   継承した layout.css の `.rail a` は「バッジ + 文字 + 件数」の3列で、
+   このアプリはバッジを使わない。そのままだと名前が 30px の列に入って
+   1文字ずつ折り返す。**1列に上書きする**(`.rail .rail__item` で
+   `.rail a` より詳しくする)。
+   1項目は2行 ── 名前と、小さな説明。名前だけだと「発注票」が何をする
+   画面なのかは押すまで分からない。 */
+.rail .rail__item{
+  display:block; grid-template-columns:none;
+  padding:9px 11px; min-height:0;
+  color:var(--ink); text-decoration:none;
+  border:1px solid transparent; border-left:3px solid transparent;
+  border-radius:6px;
+}
+.rail .rail__item:hover{ background:var(--raised); }
+.rail .rail__item--on{
+  background:var(--accent-soft); border-left-color:var(--accent);
+}
+.rail__name{ display:block; font-size:13.5px; font-weight:600;
+             white-space:nowrap; line-height:1.4; }
+.rail__d{ display:block; font-size:11px; color:var(--muted);
+          line-height:1.45; margin-top:1px; }
+.rail .rail__item--on .rail__name{ color:var(--accent); font-weight:700; }
+
+/* ---- 帯の項目 ---- */
+.slot{ display:flex; align-items:center; gap:6px; }
+.slot__k{ font-size:11px; color:var(--muted); }
+.slot__v{ font-size:12px; font-variant-numeric:tabular-nums; }
+
+/* ---- 版のバッジ ----
+   11px の薄い灰色だと帯の地に沈んで、見ようとしないと見えない。
+   現場が「いまどれが入っているか」を答えられる番号なので、
+   **探さなくても目に入る**だけの太さと明るさを与える。
+   起動待機画面(`boot_screen.py`)のバッジと同じ姿にしてある ──
+   起動中と起動後で見た目が変わると、同じものだと分からない。 */
+.ver{
+  display:inline-block; margin-left:8px;
+  font-family:var(--mono); font-variant-numeric:tabular-nums;
+  font-size:12px; font-weight:700; letter-spacing:.06em;
+  padding:2px 9px; border-radius:999px; text-decoration:none;
+  background:var(--bar-face); border:1px solid var(--bar-edge);
+  color:var(--bar-ink);
+}
+.ver:hover{ background:var(--bar-face-on); border-color:var(--bar-focus); }
+.ver:focus-visible{ outline:2px solid var(--bar-focus); outline-offset:2px; }
+
+/* ---- 画面の見出し ---- */
+.head{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+       margin:0 0 14px; }
+.head h1{ font-size:19px; margin:0; }
+.head p{ margin:0; color:var(--muted); font-size:13px; }
+
+/* ---- 欄の並び ---- */
+.grid{ display:grid; gap:10px 14px; }
+.grid--2{ grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+.grid--3{ grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
+.grid--4{ grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); }
+
+.f{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.f__k{ font-size:11px; color:var(--muted); }
+.f__v{
+  font-size:14px; padding:5px 8px; background:var(--sunken);
+  border:1px solid var(--hairline); border-radius:4px; min-height:30px;
+  white-space:pre-line; overflow-wrap:anywhere;
+  font-variant-numeric:tabular-nums;
+}
+/* **揃えは1つに。** 以前は数だけ右詰めだったが、欄が横に伸びるので
+   ラベルは左端・値は右端に離れ、目で線を引かないと対応が取れなかった。
+   桁を揃えて比べるのは表(`td.num`)の仕事で、ここは1つずつ読む場所。
+   数字の幅だけは揃えておく(`tabular-nums` は `.f__v` が持っている) */
+.f__v--num{ text-align:left; }
+/* 押すとコピーして閲覧システムを開く欄(包装仕様No)。**押せることが
+   見て分かる**ように、色と下線を付ける */
+.f__v--link{
+  display:block; color:var(--accent); text-decoration:underline;
+  text-underline-offset:3px; cursor:pointer; font-weight:600;
+}
+.f__v--link:empty{ color:inherit; text-decoration:none; cursor:default; }
+.f__v--link:hover{ background:var(--accent-soft); }
+.f__v--big{ font-size:19px; font-weight:700; }
+
+/* 入力が要る欄。VBA の黄色。
+   **予備値を書かない。** 予備値を書くと、トークンの綴りが違っていても
+   明側の直値で動いてしまい、暗い地でだけ字が読めなくなる(そうなっていた) */
+.f--need .f__v, .input--need{
+  background:var(--need-bg); border-color:var(--need-line); }
+
+/* どの規則で決まったか。VBA の赤 */
+.f--why .f__k::after{ content:" ●"; color:var(--state-error); }
+.f--why .f__k{ color:var(--state-error); font-weight:700; }
+
+/* 1本積み不可。VBA の水色枠 */
+.f--nosingle .f__v{ outline:2px solid var(--state-info); outline-offset:-2px; }
+
+/* ---- 断りと注意 ---- */
+.note{ padding:10px 14px; border-radius:6px; margin:0 0 12px;
+       border-left:3px solid var(--accent); background:var(--accent-soft);
+       font-size:13px; }
+.note--warn{ border-left-color:var(--state-error);
+             background:var(--warn-bg); }
+.note ul{ margin:6px 0 0; padding-left:1.2em; }
+
+/* ---- 表 ---- */
+.wrap{ overflow-x:auto; }
+table.grid-table{ border-collapse:collapse; width:100%; font-size:12.5px; }
+table.grid-table th, table.grid-table td{
+  border:1px solid var(--rule); padding:5px 8px; text-align:left;
+  vertical-align:top; white-space:pre-line;
+}
+table.grid-table th{ background:var(--raised); font-weight:700;
+                     white-space:nowrap; font-size:11.5px; }
+table.grid-table tr.on td{ background:var(--accent-soft); }
+table.grid-table td.num{ text-align:right; font-variant-numeric:tabular-nums; }
+
+/* ---- 設定 ---- */
+.setrow{ padding:14px 0; border-bottom:1px solid var(--hairline); }
+.setrow:last-child{ border-bottom:0; }
+.setrow__k{ font-weight:700; font-size:14px; }
+.setrow__d{ color:var(--muted); font-size:12px; margin:2px 0 8px; }
+.setrow__vba{ font-family:ui-monospace,monospace; font-size:11px;
+              color:var(--muted); }
+.setrow input[type=text]{ width:100%; }
+.resolved{ font-family:ui-monospace,monospace; font-size:11.5px;
+           color:var(--muted); margin-top:5px; overflow-wrap:anywhere; }
+.probe{ font-size:12px; margin-top:5px; }
+.probe--ok{ color:var(--state-ok); }
+.probe--ng{ color:var(--state-error); }
+
+/* 配布設定に入れる項目。押しやすいよう1行ずつ・2列に並べる */
+.distchecks{ border:1px solid var(--hairline); border-radius:6px;
+             padding:8px 12px; margin:8px 0 0; min-width:0; display:grid;
+             grid-template-columns:repeat(auto-fill, minmax(min(100%, 20em), 1fr));
+             gap:8px 16px; }
+.distchecks legend{ font-size:12px; color:var(--muted); padding:0 4px; }
+/* チェック | 名前 / いまの値(2行目)。値は長い道になるので折り返す */
+.distchecks label{ display:grid; grid-template-columns:auto 1fr; column-gap:6px;
+                   align-items:start; min-height:32px; cursor:pointer; }
+.distchecks input{ margin-top:3px; }
+.distchecks .muted{ grid-column:2; font-size:11.5px; overflow-wrap:anywhere; }
+/* 置き場所の道は長い。**折り返さないと面ごと横に押し広げる** */
+#panel-distribution code{ overflow-wrap:anywhere; }
+
+.btnrow{ display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
+.sec{ background:var(--surface); border:1px solid var(--hairline);
+      border-radius:8px; padding:16px 18px; margin:0 0 14px;
+      /* `components.css` にも同じ名前の `.sec`(表の升の2行目: 折り返さない)が
+         ある。このアプリでは升の `.sec` を使っておらず、区画にそちらの
+         `nowrap` が掛かって**長い説明文が右で切れていた**。区画は折り返す */
+      white-space:normal; }
+.sec > h2{ font-size:15px; margin:0 0 10px; }
+
+/* 中身は main の中でスクロールさせる。帯とレールは動かさない */
+#main{ overflow-y:auto; min-height:0; padding:0 14px 20px 0; }
+
+@media (max-width:640px){
+  .shell{ display:block; height:auto; }
+  .rail{ display:flex; gap:6px; overflow-x:auto; }
+  .rail .rail__item{ flex:0 0 auto; }
+  .rail__d{ display:none; }
+  #main{ overflow:visible; padding:0 14px 20px; }
+}
+
+/* ---- マスタ管理 ------------------------------------------------
+   左に表、右にその中身。**画面ごとスクロールさせない**ので、
+   動くのは一覧の中と行の中だけ。 */
+.masterwrap{ display:grid; grid-template-columns:16em 1fr; gap:12px;
+             align-items:stretch; height:min(56vh, 520px); min-height:320px; }
+/* `min-width:0` を落とすと、格子の枠より中身が広い側がはみ出す
+   (grid の既定は `min-width:auto`) */
+.masterwrap > *{ min-width:0; min-height:0;
+                 display:flex; flex-direction:column; }
+.mtables{ border:1px solid var(--hairline); border-radius:6px;
+          padding:8px; background:var(--sunken); }
+.mhead h3{ margin:0 auto 0 0; font-size:14px; }
+
+.mlist{ flex:1; min-height:0; overflow-y:auto; display:grid;
+        gap:2px; align-content:start; }
+/* 表の1つ。**押せるものは押せる形**にする(高さ44px) */
+.mrow{ display:grid; grid-template-columns:auto 1fr auto; gap:8px;
+       align-items:center; min-height:44px; padding:5px 9px;
+       border:1px solid transparent; border-radius:4px;
+       background:none; color:inherit; font:inherit; text-align:left;
+       cursor:pointer; }
+.mrow:hover{ background:var(--raised); }
+.mrow[aria-current="true"]{ background:var(--accent-soft);
+                            border-color:var(--accent-line); }
+.mrow[aria-current="true"] .mrow__name{ font-weight:700; color:var(--accent); }
+.mrow__mark{ display:grid; place-items:center; width:22px; height:22px;
+             border-radius:4px; background:var(--sunken); color:var(--muted);
+             font-size:11px; font-weight:700; flex:none; }
+.mrow[aria-current="true"] .mrow__mark{ background:var(--accent);
+                                        color:var(--surface); }
+.mrow__name{ min-width:0; overflow-wrap:anywhere; font-size:12.5px; }
+/* 件数は情報の匂い。押す前に「その先に何があるか」が分かる */
+.mrow__n{ font-family:ui-monospace,monospace; font-size:11px; color:var(--muted);
+         padding-left:6px;
+          font-variant-numeric:tabular-nums; }
+
+.mhead{ display:flex; align-items:baseline; gap:10px; flex:none;
+        margin-bottom:8px; flex-wrap:wrap; }
+.mhead h2{ margin:0 auto 0 0; }
+.mcount{ font-family:ui-monospace,monospace; font-size:11.5px;
+         color:var(--muted); font-variant-numeric:tabular-nums; }
+
+.mbar{ display:flex; gap:6px; align-items:center; flex:none;
+       margin-bottom:8px; flex-wrap:wrap; }
+.mbar .input{ flex:1 1 16em; min-width:10em; }
+
+/* 値は桁をそろえる。数字の列が多い表なので、ずれると読み比べられない */
+#mRows td{ font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap; }
+#mRows tr{ cursor:pointer; }
+#mRows tr:hover td{ background:var(--raised); }
+#mHead th{ white-space:nowrap; }
+/* 置き場所のパスは長い。**折り返す**。
+   `white-space` は継承するので、祖先が `nowrap` でも効くよう明示する
+   (`overflow-wrap` だけでは `nowrap` に勝てない) */
+#mSource, #mNote{ flex:none; margin:6px 0 0;
+                  white-space:normal; overflow-wrap:anywhere; }
+/* 表は18列ある。**中で横に送る**ので、枠は親より広くならない */
+.tablewrap--rows{ flex:1; min-height:0; min-width:0; max-width:100%;
+                  overflow:auto; }
+
+.why{ color:var(--muted); font-size:12px; }
+.why[hidden]{ display:none; }
+.st{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px;
+     border:1px solid transparent; white-space:nowrap; }
+.st--ok{ background:var(--ok-bg); color:var(--state-ok);
+         border-color:var(--state-ok); }
+.st--warn{ background:var(--need-bg); color:var(--state-warn);
+           border-color:var(--state-warn); }
+.status{ padding:8px 12px; border-radius:6px; font-size:12.5px; margin:0 0 8px;
+         border-left:3px solid var(--accent); background:var(--accent-soft); }
+.status--warn{ border-left-color:var(--state-warn); background:var(--need-bg); }
+.status--ng{ border-left-color:var(--state-error); background:var(--warn-bg); }
+.status[hidden]{ display:none; }
+
+/* 1行を開いた姿。18列ある表は表のままでは読めない */
+.browser{ width:min(760px,94vw); border:1px solid var(--rule);
+          border-radius:8px; background:var(--surface); color:var(--ink);
+          padding:14px; }
+.browser::backdrop{ background:rgba(0,0,0,.4); }
+.browser__head{ display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+                margin:0 0 10px; }
+.browser__head b{ margin-right:auto; font-size:14px; }
+.mfields{ display:grid; grid-template-columns:10em 1fr; gap:4px 12px;
+          align-items:center; max-height:52vh; overflow-y:auto;
+          padding:2px 2px 8px; }
+.mfields label{ color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.mfields .input{ width:100%; padding:4px 8px; }
+.mfields .mhint{ display:block; color:var(--muted); font-size:11px; }
+.mfields .mval{ font-family:ui-monospace,monospace; font-size:12px;
+                overflow-wrap:anywhere; }
+.mfields .req::after{ content:" 必須"; color:var(--state-error);
+                      font-size:11px; font-weight:700; }
+.mfoot{ margin-top:10px; align-items:center; }
+.mfoot[hidden]{ display:none; }
+
+button.sortbtn{ background:none; border:0; font:inherit; color:inherit;
+                cursor:pointer; padding:0; display:inline-flex; gap:3px;
+                align-items:center; }
+button.sortbtn:hover{ color:var(--accent); }
+.sortmark{ font-size:9px; color:var(--accent); }
+
+@media (max-width:760px){
+  .masterwrap{ grid-template-columns:1fr; height:auto; }
+  .mlist{ max-height:200px; }
+}
+
+/* ---- マスタ編集の認証 -------------------------------------------- */
+.authbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+          margin-bottom:6px; }
+.authbar .input{ flex:0 1 16em; min-width:9em; }
+
+/* タブの上に出す姿。**どの面からでも打てる**ように面の外に置くので、
+   面の見出しと見分けが付くよう、沈んだ地に載せる */
+.authbar--top{
+  margin:0 0 14px; padding:9px 12px;
+  background:var(--sunken); border:1px solid var(--rule); border-radius:8px;
+}
+.authbar__k{ font-size:12px; font-weight:700; color:var(--muted); }
+.authbar--top .why{ margin:0; }
+.authchange{ margin-top:12px; border-top:1px solid var(--hairline);
+             padding-top:10px; }
+.authchange > summary{ cursor:pointer; font-size:12.5px; color:var(--muted);
+                       font-weight:700; }
+.authchange > summary:hover{ color:var(--accent); }
+.authchange[open] > summary{ margin-bottom:8px; }
+
+/* ---- チェックボックス ----
+   継承した components.css の `.choice` は「押して選ぶ札」で、
+   `.choice__ck` は選ばれた印(既定は透明)。**本物のチェックボックスに
+   当てると見えなくなる**ので、素直な形を別に持つ。 */
+.check{ display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+        font-size:13px; min-height:32px; }
+.check input[type=checkbox]{ width:17px; height:17px; margin:0; flex:none;
+                             accent-color:var(--accent); cursor:pointer; }
+
+/* ---- このアプリについて ----
+   帯のバッジから飛んでくる先。固定の帯に見出しが隠れないよう、
+   錨(#about)には帯のぶんの余白を足しておく。 */
+#about{ scroll-margin-top:84px; }
+
+.about{
+  display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  padding:10px 14px; margin:0 0 10px;
+  background:var(--accent-soft); border:1px solid var(--accent-line);
+  border-radius:8px;
+}
+.about__k{ font-size:11px; color:var(--muted); }
+/* 版は**この画面でいちばん大きい数字**。聞かれて答えるためのものなので、
+   離れた画面からでも読める大きさにする */
+.about__v{
+  font-family:var(--mono); font-variant-numeric:tabular-nums;
+  font-size:22px; font-weight:700; letter-spacing:.04em;
+  color:var(--accent); line-height:1.2;
+}
+.about__name{ font-size:13px; color:var(--muted); margin-left:auto; }
+.about__h{ font-size:13px; margin:16px 0 4px; }
+
+/* ---- 使ってよい画面の覆い ----
+   **地は不透明。** 半透明にすると後ろの画面が読めてしまい、
+   「見えているのに押せない」がいちばん問い合わせを生む。
+   既定で見えている(HTML にそのまま置いてある)ので、通るまでは
+   何も操作できない ── 隠しておいて後から掛けると、掛かるまでの
+   一瞬だけ押せてしまう。 */
+.gate{
+  position:fixed; inset:0; z-index:100;
+  display:grid; place-items:center; padding:24px;
+  background:var(--ground);
+}
+.gate__card{
+  max-width:460px; width:100%;
+  background:var(--surface); border:1px solid var(--rule); border-radius:10px;
+  padding:26px 28px; box-shadow:0 8px 32px rgba(0,0,0,.10);
+}
+.gate__t{ font-size:18px; margin:0 0 10px; }
+.gate__d{ font-size:14px; color:var(--ink); margin:0 0 6px; line-height:1.75; }
+.gate__note{ font-size:12px; color:var(--muted); margin:10px 0 0; line-height:1.7; }
+.gate .btnrow{ margin-top:18px; }
+/* 断られている姿。**色だけに頼らない**ので見出しの文言も変わる */
+.gate--ng .gate__card{ border-color:var(--state-error); border-top:3px solid var(--state-error); }
+.gate--ng .gate__t{ color:var(--state-error); }
+
+/* ---- スピンボタン (バリ揃え梱包) ----
+   VBA の UFalmo はスピンボタンで増減できた。現場は手袋をしていること
+   があるので、**押して変えられる道も残す**。打ち込みも消さない ──
+   10本を打つのに10回押させない。
+   ブラウザ既定の上下つまみは 10px ほどで手袋では押せないので消し、
+   左右に 44px の的を置く(当たり判定の約束どおり)。 */
+.spin{ display:inline-flex; align-items:stretch; gap:0; min-width:0; }
+.spin__v{
+  border-radius:0; width:4.5em; text-align:center;
+  position:relative; z-index:1; margin:0 -1px;
+}
+/* 既定のつまみは小さすぎる。押せる的は左右に出す */
+.spin__v::-webkit-outer-spin-button,
+.spin__v::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+.spin__v{ -moz-appearance:textfield; appearance:textfield; }
+.spin__b{
+  font:inherit; font-size:17px; line-height:1; cursor:pointer;
+  min-width:44px; min-height:44px; padding:0;
+  display:grid; place-items:center;
+  background:var(--act-idle); color:var(--act-idle-fg);
+  border:1px solid var(--act-idle-line);
+}
+.spin__b:first-child{ border-radius:var(--radius-sm) 0 0 var(--radius-sm); }
+.spin__b:last-child { border-radius:0 var(--radius-sm) var(--radius-sm) 0; }
+.spin__b:hover{ background:var(--raised); }
+.spin__b:active{ background:var(--accent-soft); }
+.spin__b:focus-visible{ outline:2px solid var(--focus); outline-offset:-2px;
+                        position:relative; z-index:2; }
+
+
+/* ---- 打ち込む欄 ----
+   「1. ロットと受注」の4つ(LotNo・受注番号・検入数・コイル外径)は、
+   **人が自分で打つ**欄。ここだけ大きくする ── 展開された値と同じ
+   13px だと、打ち間違いにその場で気づけない。
+   下の読み取り欄は小さいままにしておくことで、**打つ場所はここだ**
+   ということも同時に伝わる。 */
+.input--key{
+  font-size:var(--fs-key); font-weight:600;
+  min-height:52px; padding:8px 12px; letter-spacing:.01em;
+}
+/* 数の欄は 6em 固定だと、18px では 4桁で詰まる */
+.input--key.input--num{ width:7em; }
+select.input--key{ font-weight:600; }
+
+/* 計算結果の中でただ1つ、人が直せる欄(積数)。**隣の台数と同じ大きさ・
+   同じ左寄せ**にする。等幅の小さな字で右寄せだと、並んだ結果の中で
+   そこだけ読みにくく、揃ってもいなかった(2026-09-24 の動作確認で気づいた) */
+.input--result{
+  font-size:19px; font-weight:700; text-align:left;
+  width:100%; font-family:inherit;
+}
+
+
+/* ---- 読み取り欄の並び ----
+   `1fr` で伸ばすと、画面が広いほど欄が横に伸びて、ラベルと値が離れる。
+   **伸びる上限を決める** ── 右に余白が出るが、そのほうが目で追える。 */
+.grid--data{ grid-template-columns:repeat(auto-fill,minmax(136px,176px)); }
+
+/* ---- 枠 ----
+   リプラは**どこに入るもの**かで2つに分かれる(最下部 / コイル間)。
+   混ぜて8欄並べると「最下部 本数」と「コイル間 本数」を取り違える。
+   `fieldset` の既定の枠は太く古いので、細い罫線に置き換える。 */
+.frames{ display:grid; gap:12px;
+         grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); }
+.frame{
+  margin:0; padding:10px 12px 12px;
+  border:1px solid var(--rule); border-radius:8px;
+  background:var(--sunken); min-width:0;
+}
+.frame__k{
+  padding:0 6px; margin-left:-2px;
+  font-size:12px; font-weight:700; color:var(--accent);
+}
+.frame .grid{ margin:0; }
+.frame .grid + .grid{ margin-top:10px; }
+/* 枠の中は地が沈んでいるので、欄は surface で浮かせる */
+.frame .f__v{ background:var(--surface); }
+
+
+/* ---- 組で読ませる表 (最下部の 長 / 短) ----
+   「長さ / 本数(長) / 長さ(短) / 本数(短)」と横に4つ並べると、
+   どの長さがどの本数のものか、目で線を引くことになる。
+   列を「長 / 短」にすれば **1列を上から下に読めば1組**。 */
+.pair{ border-collapse:collapse; margin:0 0 10px; }
+.pair th, .pair td{
+  border:1px solid var(--rule); padding:5px 10px;
+  font-size:13px; min-width:5.5em; background:var(--surface);
+}
+/* 見出し(左の列と上の行)は地を沈めて、値と見分ける */
+.pair thead th, .pair tbody th{
+  background:var(--sunken); color:var(--muted);
+  font-weight:700; font-size:12px; white-space:nowrap;
+}
+.pair thead th{ text-align:center; }
+.pair tbody th{ text-align:left; }
+/* 左上の空きマスは枠を出さない(何も指していない) */
+.pair thead td{ border:0; background:none; }
+.pair td.num{ text-align:right; font-variant-numeric:tabular-nums;
+              font-size:14px; }

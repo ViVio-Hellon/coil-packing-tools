@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 実行時に書かれるもの(統合アプリ・各機能とも %LOCALAPPDATA% 配下だが、誤って本体側にできた場合の保険)
+/runtime/
+/logs/
+*.log
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-wal
+*.db-shm
+
+# 書き出し先(CSV など)。端末ごとの成果物で配るものではない
+/export/
+
+# 配布設定。**配る人がその場で書き出すもの**で、ソースではない
+配布設定/
+配布設定.作成中/
+
+# フォントは再配布条件が不明なためリポジトリに含めない(modules/packing_pena_label/assets/fonts/README.md)
+*.ttf
+*.otf
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini

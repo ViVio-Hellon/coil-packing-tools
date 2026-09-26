@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ display_name }}{% endblock %}</title>
+{# タブの印。外部ファイルにしないのは、要求を1本減らすため #}
+<link rel="icon" href="data:image/svg+xml,
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>
+  <rect width='16' height='16' rx='3' fill='%230b5d6e'/>
+  <text x='8' y='12' font-size='10' text-anchor='middle' fill='white'>梱</text></svg>">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/shell.css') }}">
+{% block head %}{% endblock %}
+</head>
+<body>
+{#
+  統合画面の外枠。**3機能の画面そのものはここに書かない。**
+  中身(梱包明細・ペナラベル・資材計算)はそれぞれの入口の下で動く
+  別の文書で、ここは「どのタブを見せるか」と「アプリ全体の生き死に」だけを持つ。
+#}
+<div class="shell">
+  {#
+    上段: タイトルの帯(アプリ名・版・接続状態・終了)
+    下段: 横一列のタブ(機能の切り替え)
+    その下: 選んだ機能の画面
+  #}
+  <header class="topbar">
+    <div class="brand">
+      <b class="brand__name">{{ display_name }}</b>
+      <span class="ver" title="統合アプリの版">{{ version_label }}</span>
+    </div>
+    <div class="topbar__end">
+      <span class="conn" id="conn" title="バックエンド接続状態">接続確認中</span>
+      <button class="btn btn--danger" type="button" id="quit"
+              title="このアプリを終了します(3つの機能とも終わります)">終了</button>
+    </div>
+  </header>
+  {% block tabs %}{% endblock %}
+
+  {# 接続が切れたら明示する(基盤仕様書 2.9)。黙って古い表示を出し続けない #}
+  <div class="banner banner--danger" id="offline" hidden role="alert">
+    バックエンドと通信できません。アプリを開き直してください。
+  </div>
+  <div class="banner banner--danger" id="restarted" hidden role="alert">
+    アプリが開き直されています。この画面は古いので、
+    <button class="btn" type="button" id="btnReload">読み込み直す</button>
+  </div>
+  <div class="banner banner--ok" id="stopped" hidden role="status">
+    終了しました。このタブは閉じてください。
+  </div>
+
+  {% block main %}{% endblock %}
+</div>
+<script>
+  window.SHELL = {
+    token: {{ token|tojson }},
+    serverPid: {{ server_pid }},
+    alivePollMs: {{ alive_poll_ms }},
+    healthPollMs: {{ health_poll_ms }},
+    tabs: {{ tabs|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/shell.js') }}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

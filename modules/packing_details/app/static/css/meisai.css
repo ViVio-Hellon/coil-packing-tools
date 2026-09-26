@@ -1,0 +1,518 @@
+/*
+  梱包明細 — 画面のスタイル
+
+  【色はVBAから引き継ぐ】
+  現場は色で覚えているので、条番号の3状態はVBAの値をそのまま使う。
+
+    COL_AVAILABLE  RGB(214, 234, 248)  #d6eaf8  未使用
+    COL_USED       RGB(220, 220, 220)  #dcdcdc  使用済み
+    COL_EMPTY      RGB(245, 245, 245)  #f5f5f5  空きスロット
+    廃棄            RGB(255, 100, 100)  #ff6464
+
+  **色だけに頼らない。** 使用済みは文字も薄くし、廃棄には × を重ねる
+  (色覚の差と、褪せたモニタの両方に効く)。
+
+  【暗いテーマ】
+  ラインPCは明るいテーマで使うが、手元で確認するときに目が痛いので
+  両方を用意する。条番号の色相は変えず、地との差だけを付け直す。
+*/
+:root{
+  --ground:#eef2f4; --surface:#ffffff; --sunken:#e4ebee;
+  --line:#cfdadf; --line-soft:#e2e9ec;
+  --ink:#13232b; --ink-2:#42565f; --ink-3:#6d828c;
+  --accent:#0e6a72; --accent-soft:#d8ecee; --accent-ink:#08484e;
+
+  /* 条番号の3状態(VBA由来) */
+  --coil:#d6eaf8; --coil-line:#8fb8d6; --coil-ink:#13232b;
+  --coil-used:#dcdcdc; --coil-used-line:#b4b4b4; --coil-used-ink:#7b8a91;
+  --slot-empty:#f5f5f5; --slot-line:#c8d2d6;
+  --discard:#ff6464; --discard-line:#d63b3b; --discard-ink:#5c1414;
+
+  --ok:#2f7d4f; --ok-soft:#ddefe3;
+  --warn:#b85400; --warn-soft:#fbe8d8;
+  --danger:#c3352f; --danger-soft:#fbe0df;
+
+  --shadow:0 1px 2px rgba(19,35,43,.06), 0 6px 18px rgba(19,35,43,.05);
+  --ctl-h:30px; --ctl-r:4px;
+  --ui:"Meiryo UI",Meiryo,"Yu Gothic UI",system-ui,sans-serif;
+  --mono:"Consolas","Meiryo UI",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#101a1e; --surface:#17242a; --sunken:#1e2e35;
+    --line:#2e434c; --line-soft:#253841;
+    --ink:#e6eef1; --ink-2:#a9bcc4; --ink-3:#7e939c;
+    --accent:#5cc6cf; --accent-soft:#1a3a40; --accent-ink:#9fe2e8;
+    --coil:#1f4560; --coil-line:#3d6f92; --coil-ink:#e6eef1;
+    --coil-used:#2c3a41; --coil-used-line:#44565e; --coil-used-ink:#81949c;
+    --slot-empty:#1a272d; --slot-line:#33474f;
+    --discard:#8d3330; --discard-line:#c9605c; --discard-ink:#ffd9d7;
+    --ok:#6fc58e; --ok-soft:#1d3527;
+    --warn:#e59450; --warn-soft:#3a2a18;
+    --danger:#f07672; --danger-soft:#3d2020;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#101a1e; --surface:#17242a; --sunken:#1e2e35;
+  --line:#2e434c; --line-soft:#253841;
+  --ink:#e6eef1; --ink-2:#a9bcc4; --ink-3:#7e939c;
+  --accent:#5cc6cf; --accent-soft:#1a3a40; --accent-ink:#9fe2e8;
+  --coil:#1f4560; --coil-line:#3d6f92; --coil-ink:#e6eef1;
+  --coil-used:#2c3a41; --coil-used-line:#44565e; --coil-used-ink:#81949c;
+  --slot-empty:#1a272d; --slot-line:#33474f;
+  --discard:#8d3330; --discard-line:#c9605c; --discard-ink:#ffd9d7;
+  --ok:#6fc58e; --ok-soft:#1d3527;
+  --warn:#e59450; --warn-soft:#3a2a18;
+  --danger:#f07672; --danger-soft:#3d2020;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
+}
+
+*{box-sizing:border-box}
+
+/* **`hidden` を効かせる。**
+   ブラウザの既定は `[hidden]{display:none}` だが、あとから
+   `.work{display:grid}` のように**クラスで display を指定すると
+   そちらが勝つ**(作者スタイル > UAスタイル)。画面を隠したつもりの
+   カードが出たままになるので、ここで1つだけ押し切る。
+   JSは `el.hidden` を触るだけでよくなる */
+[hidden]{display:none !important}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--ui); font-size:13px; line-height:1.65;
+  padding-inline:16px; padding-block:0 40px;
+}
+.wrap{max-width:1360px; margin:0 auto}
+
+/* ---------- 上の帯 ---------- */
+.topbar{
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px;
+  padding-block:12px; border-bottom:2px solid var(--accent); margin-bottom:16px;
+}
+.topbar h1{font-size:16px; margin:0; font-weight:700}
+/* 版のバッジ。ここは「いまどれが入っているか」を聞かれたとき
+   最初に見る場所なので、薄くしない。押すとバージョン情報が開く */
+.topbar .ver{
+  font-family:var(--mono); font-size:11.5px; font-weight:600;
+  height:auto; padding:2px 8px; line-height:1.5;
+  color:var(--accent-ink); background:var(--accent-soft);
+  border:1px solid var(--accent); border-radius:999px; cursor:pointer;
+}
+.topbar .ver:hover{background:var(--accent); border-color:var(--accent); color:#fff}
+:root[data-theme="dark"] .topbar .ver:hover,
+:root:not([data-theme="light"]) .topbar .ver:hover{color:#0d1b20}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]) .topbar .ver:hover{color:#fff}
+}
+.topbar .spacer{margin-left:auto}
+/* ボタンはひとかたまり。帯が詰まっても「説明書」だけ落とさない */
+.topbar .tools, dialog .foot .tools{display:flex; gap:8px; flex:none}
+.stamp{font-size:11.5px; color:var(--ink-3); font-family:var(--mono)}
+.stamp b{color:var(--ink-2)}
+
+/* ---------- 帯(通知) ---------- */
+.banner{
+  padding:9px 14px; border-radius:var(--ctl-r); margin-bottom:12px;
+  border-left:4px solid var(--warn); background:var(--warn-soft);
+  color:var(--ink); font-size:13px;
+}
+.banner.danger{border-left-color:var(--danger); background:var(--danger-soft)}
+.banner.ok{border-left-color:var(--ok); background:var(--ok-soft)}
+.banner[hidden]{display:none !important}
+
+/* ---------- 部品 ---------- */
+.card{
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:var(--ctl-r); box-shadow:var(--shadow);
+  padding:10px 12px; margin-bottom:12px;
+}
+.card > h2{
+  font-size:13px; font-weight:700; margin:0 0 8px;
+  display:flex; align-items:center; gap:8px; color:var(--ink);
+}
+.card > h2::before{
+  content:""; width:3px; height:14px; background:var(--accent);
+  border-radius:2px; flex:none;
+}
+.card > h2 .hint{font-weight:400; font-size:11.5px; color:var(--ink-3)}
+
+label{font-size:12px; color:var(--ink-2); font-weight:700}
+input[type=text], input[type=number], input[type=search], input[type=password]{
+  height:var(--ctl-h); padding:0 8px; font-family:var(--ui); font-size:13px;
+  border:1px solid var(--line); border-radius:var(--ctl-r);
+  background:var(--surface); color:var(--ink); min-width:0;
+}
+input:disabled, input[readonly]{background:var(--sunken); color:var(--ink-2)}
+input:focus-visible, button:focus-visible, a:focus-visible{
+  outline:2px solid var(--accent); outline-offset:1px;
+}
+button{
+  height:var(--ctl-h); padding:0 12px; font-family:var(--ui); font-size:12.5px;
+  border:1px solid var(--line); border-radius:var(--ctl-r);
+  background:var(--surface); color:var(--ink); cursor:pointer;
+}
+button:hover:not(:disabled){background:var(--sunken)}
+button:disabled{opacity:.45; cursor:not-allowed}
+button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+:root[data-theme="dark"] button.primary,
+:root:not([data-theme="light"]) button.primary{color:#0d1b20}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]) button.primary{color:#fff}
+}
+button.primary:hover:not(:disabled){filter:brightness(1.08)}
+button.on{background:var(--discard); border-color:var(--discard-line); color:#fff}
+.row{display:flex; flex-wrap:wrap; align-items:center; gap:8px}
+.row.gap-lg{gap:16px}
+.spin{display:inline-flex; gap:2px}
+.spin button{width:26px; padding:0; font-size:11px}
+
+/* ---------- ロット情報 ---------- */
+.info{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+  gap:2px 14px; margin-top:8px;
+}
+.info .pair{display:flex; gap:6px; align-items:baseline; min-width:0}
+.info .pair .k{font-size:11px; color:var(--ink-3); flex:none; width:70px}
+.info .pair .v{font-size:12.5px; font-weight:600; overflow-wrap:anywhere}
+.info .pair.wide{grid-column:span 2}
+@media(max-width:700px){.info .pair.wide{grid-column:auto}}
+.orders{display:flex; flex-wrap:wrap; gap:5px}
+.order{
+  border:1px solid var(--line); border-radius:999px; padding:2px 9px;
+  font-family:var(--mono); font-size:11.5px; background:var(--sunken);
+  cursor:pointer;
+}
+.order[aria-pressed="true"]{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink)}
+.spec{font-family:var(--mono); font-size:13px; font-weight:700}
+.spec a{color:var(--accent)}
+
+/* ---------- 重量 ---------- */
+.weights{display:flex; gap:8px; overflow-x:auto; padding-bottom:3px}
+.weight{flex:none; width:92px}
+.weight .lab{
+  text-align:center; font-weight:700; font-size:11px; padding:2px 0;
+  background:var(--coil); border:1px solid var(--coil-line);
+  border-bottom:none; border-radius:var(--ctl-r) var(--ctl-r) 0 0;
+  color:var(--coil-ink);
+}
+.weight input{
+  width:100%; height:26px; border-radius:0;
+  border-top:none; text-align:center; font-size:13px;
+}
+.weight .spin{display:flex; gap:0}
+.weight .spin button{
+  flex:1; width:auto; height:20px; font-size:10px; padding:0;
+  border-radius:0; border-top:none; margin-left:-1px;
+}
+.weight .spin button:first-child{margin-left:0; border-bottom-left-radius:var(--ctl-r)}
+.weight .spin button:last-child{border-bottom-right-radius:var(--ctl-r)}
+
+/* ---------- 画面の骨格 ----------
+   左に「引く→決める」の3枚、右に「積む→出す」。
+   **積み上げは3枚の横。** 上下に離れていると、条番号を押したあと
+   目を下へ振ることになる */
+.layout{display:grid; grid-template-columns:minmax(0,1fr) 262px; gap:12px; align-items:start}
+.layout .main{min-width:0}
+/* 右の列は画面に付いてくる。左が長くなっても「出力」が視界から
+   出ていかない */
+.layout .side{position:sticky; top:10px}
+@media(max-width:1040px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .layout .side{position:static}
+}
+
+/* ---------- 条番号 ---------- */
+
+.jou{margin-bottom:7px}
+.jou .lab{font-family:var(--mono); font-size:10.5px; color:var(--ink-3); margin-bottom:2px}
+.coils{display:flex; overflow-x:auto; padding-bottom:4px}
+.coil{
+  flex:none; width:38px; height:44px; margin-left:-1px;
+  border:1px solid var(--coil-line); background:var(--coil); color:var(--coil-ink);
+  font-family:var(--mono); font-size:10.5px; cursor:pointer; padding:0;
+  border-radius:0; display:flex; align-items:center; justify-content:center;
+}
+.coil:first-child{margin-left:0}
+.coil:hover:not(:disabled){filter:brightness(.96)}
+.coil[data-state="used"]{
+  background:var(--coil-used); border-color:var(--coil-used-line);
+  color:var(--coil-used-ink); cursor:not-allowed; text-decoration:line-through;
+}
+.coil[data-state="discarded"]{
+  background:var(--discard); border-color:var(--discard-line);
+  color:var(--discard-ink); font-weight:700;
+}
+/* 色だけに頼らない。廃棄には × を重ねる */
+.coil[data-state="discarded"]::after{content:"×"; margin-left:2px; font-size:12px}
+
+.stack{
+  display:flex; flex-direction:column-reverse; gap:2px;
+  border:1px solid var(--line); border-radius:var(--ctl-r);
+  padding:6px; background:var(--sunken); min-height:60px;
+}
+.slot{
+  height:23px; border:1px solid var(--slot-line); background:var(--coil);
+  font-family:var(--mono); font-size:12px; cursor:pointer; padding:0;
+  border-radius:2px;
+}
+.slot.empty{background:var(--slot-empty); border-style:dashed; color:var(--ink-3); cursor:default}
+.stack-note{font-family:var(--mono); font-size:10px; color:var(--ink-3); margin-top:5px}
+
+/* ---------- 出力一覧 ---------- */
+.outputs{display:flex; flex-direction:column; gap:3px; max-height:150px; overflow-y:auto}
+.output{
+  display:flex; align-items:center; gap:8px; text-align:left; width:100%;
+  height:auto; padding:5px 9px; font-family:var(--mono); font-size:12px;
+}
+.output[aria-pressed="true"]{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink)}
+.output .n{font-weight:700}
+.output .c{margin-left:auto; color:var(--ink-3); font-size:11px}
+.empty{color:var(--ink-3); font-size:12px; padding:6px 2px}
+
+/* ---------- 確認ダイアログ ---------- */
+dialog{
+  border:1px solid var(--line); border-radius:6px; padding:0;
+  background:var(--surface); color:var(--ink); max-width:min(460px,92vw);
+  box-shadow:0 10px 40px rgba(0,0,0,.25);
+}
+dialog::backdrop{background:rgba(10,20,25,.42)}
+dialog .head{padding:14px 18px 0; font-weight:700; font-size:14px}
+dialog .body{padding:10px 18px 4px; white-space:pre-line; font-size:13px; color:var(--ink-2)}
+dialog .body ul{margin:8px 0 0; padding-left:20px; font-family:var(--mono); font-size:12px}
+dialog .foot{display:flex; justify-content:flex-end; gap:8px; padding:14px 18px 16px}
+
+/* ---------- 画面は1枚だけ ----------
+   2枚目を開いたとき(`meisai_busy.html`)と、引き継がれたとき(覆い)。
+   **どちらも業務の画面は触らせない。** */
+.busy{
+  background:var(--surface); border:1px solid var(--line);
+  border-left:4px solid var(--warn);
+  border-radius:var(--ctl-r); box-shadow:var(--shadow);
+  padding:20px 22px; max-width:640px;
+}
+.busy h2{font-size:17px; margin:0 0 10px}
+.busy p{margin:0 0 10px; font-size:13.5px; line-height:1.85; color:var(--ink-2)}
+.busy p b{color:var(--ink)}
+
+.taken{
+  position:fixed; inset:0; z-index:50;
+  display:flex; align-items:center; justify-content:center;
+  padding:16px; background:rgba(10,20,25,.55);
+}
+.taken .card{max-width:520px; margin:0; border-left:4px solid var(--warn)}
+.taken h2{font-size:16px; margin:0 0 10px}
+.taken p{margin:0 0 10px; font-size:13.5px; line-height:1.85; color:var(--ink-2)}
+.taken p b{color:var(--ink)}
+
+/* ---------- 凡例 ---------- */
+.legend{display:flex; flex-wrap:wrap; gap:4px 12px; font-size:11px; color:var(--ink-3); margin-top:6px}
+.legend span{display:inline-flex; align-items:center; gap:5px}
+.legend i{width:16px; height:11px; border:1px solid var(--coil-line); background:var(--coil); display:inline-block}
+.legend i.used{background:var(--coil-used); border-color:var(--coil-used-line)}
+.legend i.dis{background:var(--discard); border-color:var(--discard-line)}
+
+.sr-only{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+
+/* ---------- 設定ダイアログ ----------
+   タブで分けて、**欄ごとに保存する**(1つのボタンでまとめない) */
+#settingsDialog{width:min(720px,96vw); max-width:96vw}
+#settingsDialog .body{white-space:normal; min-height:320px}
+.set-tabs{display:flex; flex-wrap:wrap; gap:2px; padding:10px 18px 0;
+  border-bottom:1px solid var(--line)}
+.set-tabs button{height:auto; padding:7px 12px; border:1px solid transparent;
+  border-bottom:none; border-radius:var(--ctl-r) var(--ctl-r) 0 0;
+  background:transparent; color:var(--ink-2); margin-bottom:-1px}
+.set-tabs button[aria-selected="true"]{background:var(--surface); color:var(--accent-ink);
+  border-color:var(--line); border-bottom:1px solid var(--surface); font-weight:700}
+.set-loading{margin:0 0 8px}
+.set-box{display:flex; flex-direction:column; gap:5px; margin-bottom:14px;
+  padding:12px 14px; border:1px solid var(--line); border-radius:var(--ctl-r)}
+.set-box > input{width:100%}
+.set-box .set-qa-buttons{margin:6px 0 0}
+.set-box .set-note{margin:6px 0 0}
+.set-box-head{font-weight:700; color:var(--ink); display:flex; flex-wrap:wrap;
+  align-items:baseline; gap:4px 10px}
+.set-box-shared{border-left:4px solid var(--accent)}
+/* `.set-row`(縦に積む)より後ろにあっても勝つように、2つ重ねて書く */
+.set-row.set-row-inline{flex-direction:row; flex-wrap:wrap; align-items:center; gap:6px 10px;
+  margin:4px 0 0}
+.set-row.set-row-inline input{width:auto; flex:0 1 16em; min-width:10em}
+.set-note{white-space:pre-line}
+button.danger{border-color:var(--danger); color:var(--danger)}
+.dist-table{max-height:180px; overflow:auto; border:1px solid var(--line);
+  border-radius:var(--ctl-r); margin:4px 0}
+.dist-items{display:flex; flex-direction:column; gap:4px; margin:6px 0; padding:8px 12px;
+  border:1px solid var(--line-soft); border-radius:var(--ctl-r)}
+.dist-items legend{font-size:12px; color:var(--ink-3); padding:0 4px}
+.dist-items label{display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:13px}
+.dist-not{margin:0 0 6px; padding-left:18px}
+.m-badge.ok{background:var(--ok-soft); color:var(--ok)}
+#distMeta{white-space:pre-line}
+#distMeta.bad{color:var(--danger); font-weight:600}
+
+/* ---------- 待っている間(経過秒つき)・取り込みの進み具合 ---------- */
+.is-waiting::before{content:""; display:inline-block; width:10px; height:10px;
+  margin-right:6px; vertical-align:-1px; border:2px solid var(--line);
+  border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){ .is-waiting::before{animation:none} }
+#masterDialog.is-loading .m-scroll, #masterDialog.is-loading .m-tables{opacity:.55}
+#busyDialog{width:min(460px,92vw)}
+#busyDialog .body{white-space:normal}
+.busy-msg{font-size:14px; color:var(--ink); margin-bottom:10px; min-height:1.5em}
+.busy-bar{height:8px; border-radius:4px; background:var(--sunken); overflow:hidden;
+  margin-bottom:8px}
+.busy-bar i{display:block; height:100%; width:0; background:var(--accent);
+  transition:width .3s ease}
+.set-row{display:flex; flex-direction:column; gap:4px; margin-bottom:12px}
+.set-row input{width:100%}
+.set-stamps{
+  display:flex; flex-direction:column; gap:3px; margin-top:12px;
+  padding:10px 12px; background:var(--sunken); border-radius:var(--ctl-r);
+  font-family:var(--mono); font-size:11.5px; color:var(--ink-2);
+}
+.set-stamps .miss{color:var(--warn)}
+.set-stamps .ok{color:var(--ok)}
+
+/* 紙面の右上の文字。**別の操作**なので枠で囲って、下の「保存して取り込み」
+   と混ざらないようにする */
+.set-qa{
+  margin-top:16px; padding:12px 14px 4px;
+  border:1px solid var(--line); border-left:4px solid var(--danger);
+  border-radius:var(--ctl-r);
+}
+.set-qa-head{font-weight:700; color:var(--ink); margin-bottom:6px;
+  display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px}
+.set-qa-now{margin-bottom:6px}
+/* 共有の様子。届かないときは目立たせる(この端末の写しで刷っている) */
+.set-share{margin-bottom:10px; font-size:12px; color:var(--ink-3); line-height:1.7;
+  overflow-wrap:anywhere}
+.set-share code{font-family:var(--mono); color:var(--ink-2)}
+.set-share.bad{padding:6px 10px; border-radius:var(--ctl-r);
+  background:var(--warn-soft); color:var(--warn); font-weight:600}
+.set-qa-now b{color:var(--danger); font-family:var(--mono)}
+.set-qa-buttons{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px}
+.set-note{margin:0 0 10px; padding:6px 10px; border-radius:var(--ctl-r);
+  background:var(--ok-soft); color:var(--ok); font-size:12.5px}
+.set-note.bad{background:var(--danger-soft); color:var(--danger); font-weight:600}
+.set-admin{margin:4px 0 10px}
+.set-admin summary{cursor:pointer; color:var(--ink-2); font-size:12.5px; margin-bottom:8px}
+
+/* ---------- 明細の履歴 ---------- */
+#historyDialog{max-width:min(860px,96vw)}
+#historyDialog .body{white-space:normal}
+.his-export{border-left-color:var(--accent)}
+.his-range{display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0 12px}
+.his-result{margin-bottom:10px}
+.his-result .tscroll{max-height:320px; overflow:auto; border:1px solid var(--line);
+  border-radius:var(--ctl-r); margin-bottom:8px}
+.his-table{width:100%; border-collapse:collapse; font-size:12px}
+.his-table th{position:sticky; top:0; background:var(--sunken); text-align:left;
+  padding:5px 8px; font-weight:600; white-space:nowrap}
+.his-table td{padding:4px 8px; border-top:1px solid var(--line-soft); white-space:nowrap}
+.his-table td.num{text-align:right; font-family:var(--mono)}
+.his-table td.fuban{font-family:var(--mono); max-width:220px; overflow:hidden;
+  text-overflow:ellipsis}
+.his-table tr.replaced td{color:var(--ink-3)}
+.his-table tr.replaced td.state{color:var(--warn); font-weight:600}
+.his-table tbody tr{cursor:pointer}
+.his-table tbody tr:hover{background:var(--sunken)}
+.his-files{display:flex; flex-direction:column; gap:6px; margin-bottom:10px;
+  font-size:12.5px; overflow-wrap:anywhere}
+.his-files code{font-family:var(--mono); font-size:11.5px}
+.his-files button{margin-left:6px; padding:2px 10px}
+
+/* ---------- マスタ管理(見るだけ) ----------
+   左に表の一覧、右に中身。**狭い画面では縦に積む**(横に押し込むと表が読めない) */
+#masterDialog{width:min(1180px,97vw); max-width:97vw}
+#masterDialog .body{white-space:normal}
+.m-sources{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px}
+.m-sources button[aria-pressed="true"]{
+  background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); font-weight:700;
+}
+.m-layout{display:grid; grid-template-columns:minmax(170px,230px) minmax(0,1fr); gap:12px}
+.m-tables{display:flex; flex-direction:column; gap:3px; max-height:60vh; overflow:auto}
+.m-tables button{
+  display:flex; align-items:center; gap:8px; width:100%; height:auto; min-height:var(--ctl-h);
+  padding:4px 8px; text-align:left;
+}
+.m-tables button[aria-current="true"]{
+  background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); font-weight:700;
+}
+.m-tables .nm{flex:1; min-width:0; overflow-wrap:anywhere}
+.m-tables .n{font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+/* 狭い画面: 一覧を上に短く、中身をその下に */
+@media (max-width:760px){
+  .m-layout{grid-template-columns:minmax(0,1fr)}
+  .m-tables{max-height:26vh}
+}
+.m-main{min-width:0}
+.m-title{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; color:var(--ink)}
+.m-title b{font-size:14px}
+.m-badge{font-size:11px; padding:1px 8px; border-radius:10px;
+  background:var(--warn-soft); color:var(--warn); font-weight:600}
+.m-sub{margin:2px 0 8px; overflow-wrap:anywhere}
+.m-find{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px}
+.m-find input{flex:1 1 200px}
+.m-scroll{max-height:52vh; overflow:auto; border:1px solid var(--line);
+  border-radius:var(--ctl-r); margin-bottom:8px}
+.m-table td{max-width:260px; overflow:hidden; text-overflow:ellipsis}
+.m-table td.null{color:var(--ink-3)}
+.m-table th{padding:0}
+.m-table .sortbtn{
+  width:100%; height:auto; padding:5px 8px; border:0; border-radius:0;
+  background:transparent; font-weight:600; font-size:12px; text-align:left; white-space:nowrap;
+}
+.m-table .sortmark{margin-left:4px; color:var(--accent)}
+#masterRowDialog{width:min(640px,94vw); max-width:94vw}
+#masterRowDialog .body{white-space:normal; max-height:70vh; overflow:auto}
+dl.m-fields{display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 14px;
+  margin:0; font-size:12.5px}
+dl.m-fields dt{color:var(--ink-3); white-space:nowrap}
+dl.m-fields dd{margin:0; color:var(--ink); overflow-wrap:anywhere; white-space:pre-wrap;
+  font-family:var(--mono); font-size:12px}
+dl.m-fields dd.null{color:var(--ink-3)}
+
+/* ---------- バージョン情報 ---------- */
+#aboutDialog{max-width:min(560px,94vw)}
+#aboutDialog .body{white-space:normal}
+#aboutDialog .foot{justify-content:space-between}
+.about-ver{
+  display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px;
+  padding-bottom:10px; border-bottom:1px solid var(--line-soft);
+}
+.about-ver .num{
+  font-family:var(--mono); font-size:24px; font-weight:600; color:var(--accent-ink);
+}
+.about-ver .nm{font-size:13px; color:var(--ink-2)}
+/* 道(実行フォルダ・DB・ログ)は長い。**折り返して全部見せる** ──
+   途中で切ると、どの写しが動いているのかが言えなくなる */
+dl.about{
+  display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 14px;
+  margin:12px 0 0; font-size:12.5px;
+}
+dl.about dt{color:var(--ink-3); white-space:nowrap}
+dl.about dd{margin:0; color:var(--ink); overflow-wrap:anywhere}
+dl.about dd.mono{font-family:var(--mono); font-size:11.5px}
+
+/* ---------- 出力一覧(まとめ刷りの選択) ---------- */
+.output{
+  display:flex; align-items:center; gap:8px; width:100%;
+  padding:5px 9px; font-family:var(--mono); font-size:12px;
+  border:1px solid var(--line); border-radius:var(--ctl-r);
+  background:var(--surface);
+}
+.output[aria-pressed="true"]{
+  background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);
+}
+.output .n{font-weight:700; cursor:pointer; font-family:var(--mono); font-size:12px}
+.output .pick{
+  margin-left:auto; height:22px; padding:0 8px; font-size:11px;
+  color:var(--ink-3);
+}
+
+/* 設定：そのフォルダに何を探しているか */
+.set-row .files{color:var(--accent); font-weight:600}

@@ -1,0 +1,107 @@
+{
+  "_comment": [
+    "サイズ構成マスタ。VBA GetSizeConfig(obIdx) を外出ししたもの。",
+    "obIdx: 奇数=丈1 / 偶数=丈2。1..12=OptionButton1..12、13/14=lblSpec_08_53_1/2。",
+    "dataRow: 画面が検番・重量・サイズを読む行（VBA cfg(3)）。1.0mm×63.0mm だけ 92。",
+    "extraRow: 本数/高さ/NW/GW を複写する追加行（VBA cfg(4)）。0 は複写なし。",
+    "widthMm: SetCoilDimensions / GetHBCoilDimensions の巾（VBA ハードコード値）。",
+    "baseName: サイズ名。表記は normalize_size_name() で統一される（73mm -> 73.0mm）。",
+    "sizeCellLabel: 印刷ヘッダーの「ｺｲﾙｻｲｽﾞ：」に出す文字を、サイズ別に上書きしたいときだけ指定する。",
+    "  通常は指定しない（= 統一した サイズ名 + 全角スペース + 丈N を使う）。",
+    "  実シートの B3 と字間を完全に合わせたい場合にのみ使う。",
+    "サイズを追加するときは、ここへ 1 ブロック足すだけでよい（コード変更不要）。"
+  ],
+  "sizes": [
+    {
+      "obIdx": [
+        1,
+        2
+      ],
+      "baseName": "1.0mm×73mm",
+      "kataban": "BJB7604000QR",
+      "symbol": "c",
+      "dataRow": 3,
+      "extraRow": 0,
+      "widthMm": 73.0,
+      "cbKey": "CheckBox3"
+    },
+    {
+      "obIdx": [
+        3,
+        4
+      ],
+      "baseName": "0.6mm×82.5mm",
+      "kataban": "BJB7604200QR",
+      "symbol": "e",
+      "dataRow": 3,
+      "extraRow": 0,
+      "widthMm": 82.5,
+      "cbKey": "CheckBox4"
+    },
+    {
+      "obIdx": [
+        5,
+        6
+      ],
+      "baseName": "1.0mm×53.5mm",
+      "kataban": "BJB7606500QR",
+      "symbol": "d",
+      "dataRow": 3,
+      "extraRow": 92,
+      "widthMm": 53.5,
+      "cbKey": "CheckBox5"
+    },
+    {
+      "obIdx": [
+        7,
+        8
+      ],
+      "baseName": "1.0mm×40.0mm",
+      "kataban": "BJB7604300QR",
+      "symbol": "b",
+      "dataRow": 3,
+      "extraRow": 92,
+      "widthMm": 40.0,
+      "cbKey": "CheckBox1"
+    },
+    {
+      "obIdx": [
+        9,
+        10
+      ],
+      "baseName": "1.0mm×33.0mm",
+      "kataban": "BJB7603900QR",
+      "symbol": "a",
+      "dataRow": 3,
+      "extraRow": 92,
+      "widthMm": 33.0,
+      "cbKey": "CheckBox2"
+    },
+    {
+      "obIdx": [
+        11,
+        12
+      ],
+      "baseName": "1.0mm×63.0mm",
+      "kataban": "BJB7605900QR",
+      "symbol": "f",
+      "dataRow": 92,
+      "extraRow": 0,
+      "widthMm": 63.0,
+      "cbKey": "CheckBox6"
+    },
+    {
+      "obIdx": [
+        13,
+        14
+      ],
+      "baseName": "0.8mm×53.5mm",
+      "kataban": "BJB7610400QR",
+      "symbol": "g",
+      "dataRow": 3,
+      "extraRow": 92,
+      "widthMm": 53.5,
+      "cbKey": "ck_08_53"
+    }
+  ]
+}

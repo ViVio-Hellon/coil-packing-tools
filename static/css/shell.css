@@ -1,0 +1,100 @@
+/*
+  shell.css — 統合画面の外枠だけ
+
+  **3機能の画面のスタイルはここに書かない。** 中身は iframe の中の別文書で、
+  それぞれ自分の CSS(meisai.css / app.css / tokens.css …)を持っている。
+  ここが持つのは、上の帯・タブ・iframe の入れ物の3つ。
+
+  色は各機能の骨格の色(ティール系)に寄せてあり、どのタブでも
+  「上の暗い帯 = アプリの枠」と読めるようにする。
+*/
+:root{
+  --bar-a:#0b3d4a; --bar-b:#0b5d6e; --bar-ink:#e8f1f4; --bar-muted:#a9c4cc;
+  --bar-edge:#ffffff2e; --bar-face:#ffffff14;
+  --accent:#5cc6cf; --danger:#f07672; --ok:#6fc58e;
+  --ground:#eef2f4; --ink:#13232b;
+  --tab-ground:#e4ebee; --tab-line:#c6d2d8; --tab-ink:#3a4d57; --tab-hover:#eef3f5;
+  --tab-on:#ffffff; --accent-ink:#0b5d6e; --accent-strong:#0b6d86;
+  --sans:"Meiryo UI",Meiryo,"Yu Gothic UI",system-ui,sans-serif;
+  --mono:"Consolas","Meiryo UI",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#101a1e; --ink:#e6eef1;
+    --tab-ground:#17242a; --tab-line:#2e434c; --tab-ink:#a9bcc4; --tab-hover:#1e2e35;
+    --tab-on:#101a1e; --accent-ink:#9fe2e8; --accent-strong:#5cc6cf;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#101a1e; --ink:#e6eef1;
+  --tab-ground:#17242a; --tab-line:#2e434c; --tab-ink:#a9bcc4; --tab-hover:#1e2e35;
+  --tab-on:#101a1e; --accent-ink:#9fe2e8; --accent-strong:#5cc6cf;
+}
+
+*, *::before, *::after{ box-sizing:border-box; }
+[hidden]{ display:none !important; }
+html, body{ height:100%; margin:0; }
+body{ background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:14px; }
+
+/* 外枠は画面いっぱい。中身(iframe)だけが動く */
+.shell{ display:flex; flex-direction:column; height:100%; }
+
+/* ---- 上段: タイトルの帯 ---- */
+.topbar{
+  display:flex; align-items:center; gap:12px; flex:0 0 auto;
+  background:linear-gradient(115deg, var(--bar-a), var(--bar-b));
+  color:var(--bar-ink); min-height:44px; padding:0 16px;
+}
+.brand{ display:flex; align-items:center; gap:10px; white-space:nowrap; }
+.brand__name{ font-size:16px; font-weight:700; letter-spacing:.02em; }
+.ver{
+  font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11px; font-weight:700;
+  padding:2px 8px; border-radius:999px; background:var(--bar-face);
+  border:1px solid var(--bar-edge); color:var(--bar-muted);
+}
+.topbar__end{ margin-left:auto; display:flex; align-items:center; gap:10px; white-space:nowrap; }
+.conn{ font-size:12px; color:var(--bar-muted); }
+.conn.ok{ color:var(--ok); }
+.conn.ng{ color:var(--danger); font-weight:700; }
+
+/* ---- 下段: 横一列のタブ ---- */
+.tabs{
+  display:flex; align-items:stretch; gap:0; flex:0 0 auto;
+  background:var(--tab-ground); border-bottom:1px solid var(--tab-line);
+  padding:0 8px;
+}
+.tab{
+  appearance:none; border:0; border-right:1px solid var(--tab-line);
+  background:transparent; color:var(--tab-ink);
+  font:inherit; font-size:15px; padding:8px 28px; cursor:pointer;
+  display:flex; align-items:baseline; gap:8px; min-width:150px;
+  border-bottom:3px solid transparent; margin-bottom:-1px;
+}
+.tab:first-child{ border-left:1px solid var(--tab-line); }
+.tab:hover{ background:var(--tab-hover); }
+.tab[aria-selected="true"]{
+  background:var(--tab-on); color:var(--accent-ink); font-weight:700;
+  border-bottom-color:var(--accent-strong);
+}
+.tab:focus-visible{ outline:2px solid var(--accent-strong); outline-offset:-4px; }
+.tab__ver{ font-family:var(--mono); font-size:10px; opacity:.7; }
+
+/* ---- 帯(知らせ) ---- */
+.banner{ flex:0 0 auto; padding:8px 16px; font-size:13px; display:flex; gap:12px; align-items:center; }
+.banner--danger{ background:#fbe0df; color:#7a1f1b; }
+.banner--ok{ background:#ddefe3; color:#1e4d31; }
+
+/* ---- ボタン ---- */
+.btn{
+  appearance:none; font:inherit; font-size:13px; padding:5px 12px; border-radius:4px;
+  border:1px solid var(--bar-edge); background:var(--bar-face); color:inherit; cursor:pointer;
+}
+.btn:hover{ background:#ffffff22; }
+.btn--danger{ border-color:#f0767299; color:#ffd9d7; }
+.btn--danger:hover{ background:#f0767233; }
+.banner .btn{ border-color:currentColor; background:transparent; }
+
+/* ---- 中身 ---- */
+.panes{ position:relative; flex:1 1 auto; min-height:0; }
+.pane{ position:absolute; inset:0; }
+.pane__frame{ width:100%; height:100%; border:0; display:block; background:var(--ground); }

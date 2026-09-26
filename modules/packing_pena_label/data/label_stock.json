@@ -1,0 +1,492 @@
+{
+  "_comment": [
+    "シールラベル台紙の寸法定義。印刷レイアウトはこの値だけから組み立てる。",
+    "実寸: 縦30mm × 横105mm が 10段 × 2列 = 20面（現場提供値）。",
+    "A4(210×297) をちょうど 2×10 に割ると 105 × 29.7mm になるため、",
+    "縦は 29.7 を既定値とした（公称30mmの実測値）。30.0 にしたい場合は",
+    "labelHeightMm と pitchYMm を 30.0 にし、pageHeightMm を 300 にすること。",
+    "",
+    "1段目 = ヘッダー帯（用紙幅いっぱい・検番/重量/本数/高さ/NW/GW）",
+    "2〜9段目 = ラベル 8段 × 2列 = 16枚",
+    "10段目 = 余り",
+    "これは Excel 台紙の「ヘッダー行3 + ラベル8段」構造と一致する。",
+    "",
+    "ズレは /labels/calibration の試し刷りで offset/scale を調整して吸収する。"
+  ],
+  "stocks": [
+    {
+      "id": "a4-20men-105x297",
+      "name": "A4 20面 105×29.7mm（2列×10段）",
+      "note": "1段目ヘッダー / 2〜9段目ラベル16枚 / 10段目余り",
+      "page": {
+        "widthMm": 210.0,
+        "heightMm": 297.0
+      },
+      "grid": {
+        "cols": 2,
+        "rows": 10,
+        "originXMm": 0.0,
+        "originYMm": 0.0,
+        "pitchXMm": 105.0,
+        "pitchYMm": 29.7,
+        "labelWidthMm": 105.0,
+        "labelHeightMm": 29.7,
+        "headerRows": 1,
+        "labelRows": 8,
+        "paddingMm": 2.0,
+        "headerPaddingMm": 3.0,
+        "ruleMm": 0.2,
+        "safeMarginMm": 5.0
+      },
+      "measured": {
+        "_comment": "現場提供の実寸と、Excel台紙から採寸した参考値",
+        "nominalMm": [
+          105.0,
+          30.0
+        ],
+        "excelLabelHeightMm": 24.49,
+        "excelPitchYSamplesMm": [
+          29.43,
+          29.43,
+          28.96,
+          28.96,
+          28.02,
+          28.73,
+          28.73
+        ],
+        "note": "Excel の段間隔が一定でないのは「シールの範囲内に入ればよい」運用のため",
+        "fieldWidthNote": "情報欄の枠幅は、実際に入る最長の値が縮まずに入るように決めた（太字 2.1mm・枠内の余白 0.3mm で 検番7桁 / 型番12桁 / コイル番号5桁 / 重量 1234.5）。入りきらない値は label_sheet.fit_font_mm が縮めて全部見せる。",
+        "ruleNote": "罫線は実物のラベル（P.N./L.C./P/Q の格子）に合わせた。セルごとの枠線ではなく線分で持つ（隣り合う辺が二重にならないため）。",
+        "headerRuleNote": "ヘッダー帯に罫線は引かない（現場の求め）。左のシールにサイズ名・検番・重量、右のシールに本数/高さ/NW/GW の表を置き、真ん中の切れ目（105mm）をまたがない。",
+        "infoBlockNote": "情報欄（P.N./L.C./P/Q）は Excel の印刷（縮小 89%）に合わせて 23.5×12.24mm。現場が Excel の印刷と透かして比べ、旧 29×12.85mm は大きいと確認した。左端はラベル端から 7mm（刷れない縁を避け、やや中央寄り）。",
+        "safeMarginNote": "プリンター（EPSON LP-S180DN など）は紙の縁 約 4mm に刷れない。文字・罫線・バーは紙の端から 5mm 以上内側に置く（tests で確かめる）。"
+      },
+      "fields": [
+        {
+          "key": "pnLabel",
+          "type": "static",
+          "text": "P.N.",
+          "x": 5.0,
+          "y": 0.0,
+          "w": 5.6,
+          "h": 3.06,
+          "size": 1.9,
+          "pad": 0.3
+        },
+        {
+          "key": "pnValue",
+          "type": "static",
+          "text": "SEALING PLATE",
+          "x": 10.6,
+          "y": 0.0,
+          "w": 17.9,
+          "h": 3.06,
+          "size": 1.9,
+          "pad": 0.3
+        },
+        {
+          "key": "barcodeKataban",
+          "type": "barcode",
+          "source": "barcodeKataban",
+          "x": 29.5,
+          "y": 0.0,
+          "w": 71.5,
+          "h": 12.85,
+          "textSize": 3.0
+        },
+        {
+          "key": "lcLabel",
+          "type": "static",
+          "text": "L.C.",
+          "x": 5.0,
+          "y": 3.06,
+          "w": 5.6,
+          "h": 3.06,
+          "size": 1.9,
+          "pad": 0.3
+        },
+        {
+          "key": "kensaNo",
+          "type": "field",
+          "source": "kensaNo",
+          "x": 10.6,
+          "y": 3.06,
+          "w": 10.3,
+          "h": 3.06,
+          "size": 2.1,
+          "bold": true,
+          "pad": 0.3
+        },
+        {
+          "key": "coilNo",
+          "type": "field",
+          "source": "coilNo",
+          "x": 20.9,
+          "y": 3.06,
+          "w": 7.6,
+          "h": 3.06,
+          "size": 2.1,
+          "bold": true,
+          "pad": 0.3
+        },
+        {
+          "key": "pLabel",
+          "type": "static",
+          "text": "P",
+          "x": 5.0,
+          "y": 6.12,
+          "w": 5.6,
+          "h": 3.06,
+          "size": 1.9,
+          "pad": 0.3
+        },
+        {
+          "key": "kataban",
+          "type": "field",
+          "source": "kataban",
+          "x": 10.6,
+          "y": 6.12,
+          "w": 17.9,
+          "h": 3.06,
+          "size": 2.1,
+          "bold": true,
+          "pad": 0.3
+        },
+        {
+          "key": "qLabel",
+          "type": "static",
+          "text": "Q",
+          "x": 5.0,
+          "y": 9.18,
+          "w": 5.6,
+          "h": 3.06,
+          "size": 1.9,
+          "pad": 0.3
+        },
+        {
+          "key": "weight",
+          "type": "field",
+          "source": "weight",
+          "x": 10.6,
+          "y": 9.18,
+          "w": 11.2,
+          "h": 3.06,
+          "size": 2.1,
+          "bold": true,
+          "align": "right",
+          "pad": 0.3
+        },
+        {
+          "key": "unit",
+          "type": "static",
+          "text": "kg",
+          "x": 21.8,
+          "y": 9.18,
+          "w": 6.7,
+          "h": 3.06,
+          "size": 1.9,
+          "pad": 0.3
+        },
+        {
+          "key": "barcodeKensa",
+          "type": "barcode",
+          "source": "barcodeKensa",
+          "x": 0.0,
+          "y": 12.85,
+          "w": 101.0,
+          "h": 12.85,
+          "textSize": 3.0
+        }
+      ],
+      "headerFields": [
+        {
+          "key": "sizeName",
+          "type": "field",
+          "source": "sizeName",
+          "x": 3.0,
+          "y": 2.0,
+          "w": 92.0,
+          "h": 8.29,
+          "size": 4.0,
+          "bold": true
+        },
+        {
+          "key": "kenLabel",
+          "type": "static",
+          "text": "検番",
+          "x": 3.0,
+          "y": 10.88,
+          "w": 9.0,
+          "h": 5.92,
+          "size": 2.6
+        },
+        {
+          "key": "kensaNo",
+          "type": "field",
+          "source": "kensaNo",
+          "x": 12.0,
+          "y": 10.88,
+          "w": 31.0,
+          "h": 5.92,
+          "size": 3.6,
+          "bold": true
+        },
+        {
+          "key": "wtLabel",
+          "type": "field",
+          "source": "weightLabel",
+          "x": 43.0,
+          "y": 10.88,
+          "w": 22.0,
+          "h": 5.92,
+          "size": 2.6
+        },
+        {
+          "key": "weight",
+          "type": "field",
+          "source": "weight",
+          "x": 65.0,
+          "y": 10.88,
+          "w": 20.0,
+          "h": 5.92,
+          "size": 3.6,
+          "bold": true,
+          "align": "right"
+        },
+        {
+          "key": "kgLabel",
+          "type": "static",
+          "text": "kg",
+          "x": 85.0,
+          "y": 10.88,
+          "w": 6.0,
+          "h": 5.92,
+          "size": 2.6
+        },
+        {
+          "key": "thCount",
+          "type": "static",
+          "text": "本数",
+          "x": 121.0,
+          "y": 2.0,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 2.5,
+          "align": "right"
+        },
+        {
+          "key": "thHeight",
+          "type": "static",
+          "text": "高さ",
+          "x": 140.0,
+          "y": 2.0,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 2.5,
+          "align": "right"
+        },
+        {
+          "key": "thNw",
+          "type": "static",
+          "text": "NW",
+          "x": 159.0,
+          "y": 2.0,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 2.5,
+          "align": "right"
+        },
+        {
+          "key": "thGw",
+          "type": "static",
+          "text": "GW",
+          "x": 178.0,
+          "y": 2.0,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 2.5,
+          "align": "right"
+        },
+        {
+          "key": "pk1",
+          "type": "static",
+          "text": "1梱包目",
+          "x": 107.0,
+          "y": 7.92,
+          "w": 14.0,
+          "h": 5.92,
+          "size": 2.5
+        },
+        {
+          "key": "coilH1",
+          "type": "field",
+          "source": "coilH1",
+          "x": 121.0,
+          "y": 7.92,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 3.2,
+          "bold": true,
+          "align": "right"
+        },
+        {
+          "key": "ta1",
+          "type": "field",
+          "source": "ta1",
+          "x": 140.0,
+          "y": 7.92,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 3.2,
+          "bold": true,
+          "align": "right"
+        },
+        {
+          "key": "nw1",
+          "type": "field",
+          "source": "nw1",
+          "x": 159.0,
+          "y": 7.92,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 3.2,
+          "bold": true,
+          "align": "right"
+        },
+        {
+          "key": "gw1",
+          "type": "field",
+          "source": "gw1",
+          "x": 178.0,
+          "y": 7.92,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 3.2,
+          "bold": true,
+          "align": "right"
+        },
+        {
+          "key": "pk2",
+          "type": "static",
+          "text": "2梱包目",
+          "x": 107.0,
+          "y": 13.84,
+          "w": 14.0,
+          "h": 5.92,
+          "size": 2.5
+        },
+        {
+          "key": "coilH2",
+          "type": "field",
+          "source": "coilH2",
+          "x": 121.0,
+          "y": 13.84,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 3.2,
+          "bold": true,
+          "align": "right"
+        },
+        {
+          "key": "ta2",
+          "type": "field",
+          "source": "ta2",
+          "x": 140.0,
+          "y": 13.84,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 3.2,
+          "bold": true,
+          "align": "right"
+        },
+        {
+          "key": "nw2",
+          "type": "field",
+          "source": "nw2",
+          "x": 159.0,
+          "y": 13.84,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 3.2,
+          "bold": true,
+          "align": "right"
+        },
+        {
+          "key": "gw2",
+          "type": "field",
+          "source": "gw2",
+          "x": 178.0,
+          "y": 13.84,
+          "w": 19.0,
+          "h": 5.92,
+          "size": 3.2,
+          "bold": true,
+          "align": "right"
+        }
+      ],
+      "rules": [
+        {
+          "x1": 5.0,
+          "y1": 0.0,
+          "x2": 28.5,
+          "y2": 0.0
+        },
+        {
+          "x1": 5.0,
+          "y1": 3.06,
+          "x2": 28.5,
+          "y2": 3.06
+        },
+        {
+          "x1": 5.0,
+          "y1": 6.12,
+          "x2": 28.5,
+          "y2": 6.12
+        },
+        {
+          "x1": 5.0,
+          "y1": 9.18,
+          "x2": 28.5,
+          "y2": 9.18
+        },
+        {
+          "x1": 5.0,
+          "y1": 12.24,
+          "x2": 28.5,
+          "y2": 12.24
+        },
+        {
+          "x1": 5.0,
+          "y1": 0.0,
+          "x2": 5.0,
+          "y2": 12.24
+        },
+        {
+          "x1": 10.6,
+          "y1": 0.0,
+          "x2": 10.6,
+          "y2": 12.24
+        },
+        {
+          "x1": 28.5,
+          "y1": 0.0,
+          "x2": 28.5,
+          "y2": 12.24
+        },
+        {
+          "x1": 20.9,
+          "y1": 3.06,
+          "x2": 20.9,
+          "y2": 6.12
+        },
+        {
+          "x1": 21.8,
+          "y1": 9.18,
+          "x2": 21.8,
+          "y2": 12.24
+        }
+      ],
+      "headerRules": []
+    }
+  ]
+}

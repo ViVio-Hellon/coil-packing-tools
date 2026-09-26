@@ -1,0 +1,359 @@
+{% extends "material_base.html" %}
+{% block title %}設定 — {{ ribbon.display_name }}{% endblock %}
+
+{% block main %}
+<div class="head">
+  <h1>設定</h1>
+  <p>取り込み元の置き場所と、ライン・担当者を決めます。</p>
+</div>
+
+{#
+  認証は**タブの外**に置く。守っている先が2つある(置き場所と
+  マスタ)ので、どちらかの面の中に入れると、もう片方から使うときに
+  「面を移って、打って、戻る」になる。
+  1か所しか無いので、状態も1つで済む(2か所に置くと片方だけ古くなる)。
+#}
+<div class="authbar authbar--top">
+  <span class="authbar__k">直すための認証</span>
+  <span class="st" id="authState">確認中…</span>
+  <input class="input" id="authPass" type="password" autocomplete="current-password"
+         placeholder="パスワード" aria-label="直すためのパスワード">
+  <button class="btn btn--run" type="button" id="authOpen">認証する</button>
+  <button class="btn" type="button" id="authClose" hidden>閉じる</button>
+  <span class="why" id="authNote"></span>
+</div>
+
+{# 設定は縦に長い。**category ごとに分けて、探す距離を短くする。**
+   版のバッジ(帯)から `#about` で飛んでくるので、`tabs.js` は
+   最初に URL の印を見て、その面を開く #}
+<div class="tabs">
+  <div class="tabs__bar" role="tablist" aria-label="設定の分類">
+  <button class="tab" role="tab" type="button" data-panel="source"
+          id="tab-source" aria-controls="panel-source" aria-selected="true">
+    取り込み</button>
+  <button class="tab" role="tab" type="button" data-panel="master"
+          id="tab-master" aria-controls="panel-master" aria-selected="false">
+    マスタ管理</button>
+  <button class="tab" role="tab" type="button" data-panel="team"
+          id="tab-team" aria-controls="panel-team" aria-selected="false">
+    ラインと担当者</button>
+  <button class="tab" role="tab" type="button" data-panel="distribution"
+          id="tab-distribution" aria-controls="panel-distribution" aria-selected="false">
+    配布設定</button>
+  <button class="tab" role="tab" type="button" data-panel="about"
+          id="tab-about" aria-controls="panel-about" aria-selected="false">
+    このアプリ</button>
+  </div>
+
+  <div class="tabs__panels">
+
+  <div class="tabpanel" id="panel-source" role="tabpanel" aria-labelledby="tab-source">
+
+<div class="note">
+  打ったら <b>確かめる</b> でそこに届くか見てから、その欄の
+  <b>この欄を保存</b> を押してください。<b>保存は欄ごとです</b> ──
+  まとめて1つのボタンで書くと、直すつもりのない欄まで上書きします。
+  保存しただけでは手元のデータは変わりません ──
+  置き場所を直したあとは <b>取り込み</b> を押します。
+</div>
+
+<section class="sec">
+  <h2>取り込み元の置き場所</h2>
+
+  {# 置き場所はパスワードが要る。**押す前に**言う #}
+  <p class="status status--warn" id="pathLock" hidden></p>
+
+  <div id="fields"><p class="muted">読み込み中…</p></div>
+</section>
+
+<section class="sec">
+  <h2>取り込み</h2>
+  <p class="setrow__d">
+    共有フォルダのマスタと仕掛台帳を、手元へ写します。
+    <b>写した時点の内容で計算します</b>ので、マスタが更新されたら
+    押し直してください(日付が変わっても自動では写しません)。
+  </p>
+
+  <label class="check">
+    <input type="checkbox" id="auto-import">
+    <span>起動したときに自動で取り込む</span>
+  </label>
+
+  <div class="btnrow">
+    <button class="btn btn--run" type="button" id="import">いま取り込む</button>
+  </div>
+
+  <div id="import-result"></div>
+
+  <div class="wrap">
+    <table class="grid-table">
+      <thead>
+        <tr><th>テーブル</th><th>取り込み日時</th><th class="num">件数</th><th>元ファイル</th></tr>
+      </thead>
+      <tbody id="imported"></tbody>
+    </table>
+  </div>
+</section>
+</div><!-- /panel-source -->
+
+  <div class="tabpanel" id="panel-master" role="tabpanel" aria-labelledby="tab-master" hidden>
+
+<section class="sec">
+  <h2>パスワードを変える</h2>
+  <p class="setrow__d">
+    このパスワードは<b>マスタを直すとき</b>と<b>取り込み元の置き場所を
+    変えるとき</b>の両方に使います。いまのパスワードを知っている人だけが
+    変えられます。忘れたときは、設定ファイルの <code>admin_password</code>
+    の行を消すと既定に戻ります。
+  </p>
+  <div class="grid grid--3">
+    <label class="f"><span class="f__k">いまのパスワード</span>
+      <input class="input" id="pwNow" type="password" autocomplete="current-password"></label>
+    <label class="f"><span class="f__k">新しいパスワード</span>
+      <input class="input" id="pwNew" type="password" autocomplete="new-password"></label>
+    <label class="f"><span class="f__k">確認用</span>
+      <input class="input" id="pwConfirm" type="password" autocomplete="new-password"></label>
+  </div>
+  <div class="btnrow">
+    <button class="btn btn--commit" type="button" id="pwSave">パスワードを変える</button>
+  </div>
+</section>
+
+<section class="sec">
+  <h2>マスタ管理</h2>
+  <p class="setrow__d">
+    左で表を選ぶと中身が出ます。行を押すと1行ぶんが開きます。
+  </p>
+
+  <div class="masterwrap">
+    <aside class="mtables">
+      <div class="mlist" id="mTables">
+        <p class="why">読み込んでいます…</p>
+      </div>
+    </aside>
+
+    <section class="mrows">
+      <div class="mhead">
+        <h3 id="mTitle">梱包資材マスタ</h3>
+        <span class="st" id="mCan" hidden></span>
+        <span class="mcount" id="mCount"></span>
+      </div>
+
+      <div class="mbar">
+        <input class="input" id="mQuery" spellcheck="false" autocomplete="off"
+               placeholder="どの列でもよい(例: 1C1188 / スカシ / リプラ)"
+               aria-label="行を絞り込む">
+        <button class="btn btn--find" type="button" id="mFind">絞り込む</button>
+        <button class="btn btn--run" type="button" id="mAdd" disabled>+ 行を足す</button>
+        <button class="btn btn--find" type="button" id="mReload">読み直す</button>
+      </div>
+
+      {# 直せない理由は**先に**言う。押してから断られるのは手戻り #}
+      <p class="status status--warn" id="mWhy" hidden></p>
+      <p class="status status--ng" id="mError" hidden></p>
+
+      <div class="tablewrap tablewrap--rows">
+        <table class="grid-table">
+          <thead id="mHead"></thead>
+          <tbody id="mRows"></tbody>
+        </table>
+      </div>
+      <p class="why" id="mNote" hidden></p>
+      <p class="why" id="mSource">
+        書き先は取り込み元({{ master.source_dir }})です。
+        手元の写しではなく<b>元のファイル</b>を直すので、他の端末にも効きます。
+      </p>
+    </section>
+  </div>
+</section>
+
+{# 1行を開く。横に18列ある表は、表のままでは読めない。
+   直せない表・認証していないときは読むだけの姿になる #}
+
+</div><!-- /panel-master -->
+
+  <div class="tabpanel" id="panel-team" role="tabpanel" aria-labelledby="tab-team" hidden>
+<section class="sec">
+  <h2>ラインと担当者</h2>
+  <p class="setrow__d">
+    ラインはチェックリストの表題に出ます。担当者は依頼者欄に出ます。
+    帯からも変えられます。
+  </p>
+  <div class="grid grid--2">
+    <label class="f">
+      <span class="f__k">ライン</span>
+      <select class="input" id="line">
+        {% for l in ribbon.lines %}<option value="{{ l }}">{{ l }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="f">
+      <span class="f__k">担当者</span>
+      <select class="input" id="worker">
+{#
+          担当者は梱包資材マスタの「班員名簿」から、**担当ラインが
+          機側の人だけ**。班ごとに束ねて出す ── 名前だけを何十行も
+          並べても、目当ての人を探せない。
+          名簿が取り込めていなければ、班の見出しは空で予備の一覧が出る。
+        #}
+        <option value="">(未選択)</option>
+        {% for g in ribbon.workers.groups %}
+          {% if g.team %}
+          <optgroup label="{{ g.team }}">
+            {% for w in g.names %}
+            <option value="{{ w }}" {% if w == ribbon.worker %}selected{% endif %}>{{ w }}</option>
+            {% endfor %}
+          </optgroup>
+          {% else %}
+            {% for w in g.names %}
+            <option value="{{ w }}" {% if w == ribbon.worker %}selected{% endif %}>{{ w }}</option>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      </select>
+    </label>
+    <p class="why" id="workerWhy"></p>
+  </div>
+</section>
+
+</div><!-- /panel-team -->
+
+{# 配布設定(`coil_tool/distribution.py`)。1台で決めた設定を、ツールの
+   フォルダごと配った先でそのまま使う(姉妹ツール python-web-tools と同じ
+   仕組み)。書き出し・読み込み直し・消すは、**いちばん上の認証**を通す
+   ── 置き場所と同じ関門。面の中にパスワード欄は置かない。
+   中身は `/api/settings` の `distribution` から `settings.js` が描く #}
+  <div class="tabpanel" id="panel-distribution" role="tabpanel" aria-labelledby="tab-distribution" hidden>
+<section class="sec">
+  <h2>いま置いてある配布設定 <span class="st" id="distState">確認中…</span></h2>
+  <p class="setrow__d" id="distMeta"></p>
+  <table class="grid-table">
+    <thead><tr><th>項目</th><th>値</th></tr></thead>
+    <tbody id="distRows"></tbody>
+  </table>
+  <p class="setrow__d">置き場所: <code id="distPath"></code>
+    ── <b>配布先に関わるものはすべてこのフォルダ</b>に入ります
+    (設定.json・はじめに読む.txt)。</p>
+  <p class="setrow__d" id="distApplied"></p>
+</section>
+
+<section class="sec">
+  <h2>この端末の設定を配布設定にする</h2>
+  <p class="setrow__d">
+    いまこの端末に入っている値をそのまま書き出します(前の中身は置き換えます)。
+    配った先は<b>起動したときに読み込みます</b>。ただし<b>その端末にすでにある設定は
+    読み込みません</b>(上書きしない)。この端末で変えていない項目は入りません
+    (配った先も既定で動きます)。
+  </p>
+  <p class="status status--warn" id="distLock" hidden></p>
+  <fieldset class="distchecks" id="distItems">
+    <legend>入れる設定</legend>
+  </fieldset>
+  <div class="btnrow">
+    <button class="btn btn--commit" type="button" id="distExport">配布設定を書き出す</button>
+    <button class="btn" type="button" id="distReapply">配布設定を読み込み直す</button>
+    <button class="btn btn--danger" type="button" id="distRemove">配布設定を消す</button>
+  </div>
+  <p class="setrow__d">
+    <b>ラインは既定で入れません。</b>端末ごとに LS4 / NS1 が違うので、入れたまま配ると
+    全端末が同じラインになります。<b>担当者は入れられません</b>(人ごとに違うため)。
+    配った先で「ラインと担当者」の面から選んでください。
+    「読み込み直す」は、この端末にすでにある設定も上書きします。
+  </p>
+</section>
+</div><!-- /panel-distribution -->
+
+{# 帯のバッジから飛んでくる先。番号の隣に、番号だけでは足りないことを置く #}
+  <div class="tabpanel" id="panel-about" role="tabpanel" aria-labelledby="tab-about" hidden>
+<section class="sec" id="about">
+  <h2>このアプリについて</h2>
+  <p class="setrow__d">
+    現場の端末にはフォルダごと写して配ります。
+    <b>「いまどれが入っているか」はこの版で答えてください。</b>
+    帯のアプリ名のとなりにも同じ番号が出ています。
+  </p>
+
+  <div class="about">
+    <div class="about__ver">
+      <span class="about__k">版</span>
+      <b class="about__v" id="a-version">—</b>
+    </div>
+    <div class="about__name" id="a-name"></div>
+  </div>
+
+  {# 版の書き方が壊れている / 設定ファイルが読めない、は黙って既定値で
+     動いてしまう。**気づける場所に出す** #}
+  <p class="status status--warn" id="a-warn" hidden></p>
+
+  <div class="grid grid--3">
+    <div class="f"><span class="f__k">アプリID</span>
+      <span class="f__v" id="a-appid"></span></div>
+    <div class="f"><span class="f__k">ポート</span>
+      <span class="f__v" id="a-port"></span></div>
+    <div class="f"><span class="f__k">Python</span>
+      <span class="f__v" id="a-python"></span></div>
+  </div>
+
+  <h3 class="about__h">置き場所</h3>
+  <p class="setrow__d">
+    調べるときに使います。ログとキャッシュは<b>利用者ごとのローカル領域</b>に
+    置いてあるので、本体を共有フォルダに置いて複数の端末から使っても混ざりません。
+  </p>
+  <div class="grid grid--2">
+    <div class="f"><span class="f__k">アプリ本体</span>
+      <span class="f__v" id="a-root"></span></div>
+    <div class="f"><span class="f__k">ローカル領域</span>
+      <span class="f__v" id="a-local"></span></div>
+    <div class="f"><span class="f__k">アプリ設定 (版はここ)</span>
+      <span class="f__v" id="a-appconf"></span></div>
+    <div class="f"><span class="f__k">利用者の設定</span>
+      <span class="f__v" id="p-config"></span></div>
+    <div class="f"><span class="f__k">作業用DB</span>
+      <span class="f__v" id="p-db"></span></div>
+    <div class="f"><span class="f__k">ログ</span>
+      <span class="f__v" id="p-log"></span></div>
+    <div class="f"><span class="f__k">Python の実体</span>
+      <span class="f__v" id="a-pyexe"></span></div>
+  </div>
+</section>
+</div><!-- /panel-about -->
+
+  </div><!-- /tabs__panels -->
+</div><!-- /tabs -->
+
+{# 1行を開く窓は**面の外**に置く。隠れている面の中にあると、
+   開こうとしても出てこない(祖先が display:none になる) #}
+<dialog id="mEdit" class="browser meditor">
+  <form method="dialog" class="browser__head">
+    <b id="mEditTitle"></b>
+    <span class="st" id="mEditKind"></span>
+    <button class="btn btn--danger" value="cancel">閉じる</button>
+  </form>
+  <p class="status status--warn" id="mEditWhy" hidden></p>
+  <p class="status status--ng" id="mEditError" hidden></p>
+  <div class="mfields" id="mFields"></div>
+  <div class="btnrow mfoot" id="mFoot">
+    <button class="btn btn--commit" type="button" id="mSave">取り込み元へ書く</button>
+    <button class="btn btn--danger" type="button" id="mDelete">× この行を消す</button>
+  </div>
+  <div class="btnrow mfoot" id="mConfirm" hidden>
+    <span class="status status--ng" style="margin:0">
+      取り込み元から消します。戻せません。</span>
+    <button class="btn btn--danger" type="button" id="mDeleteYes">消す</button>
+    <button class="btn" type="button" id="mDeleteNo">やめる</button>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block script %}
+{#
+  最初の描画ぶん(共有フォルダに触らずに分かる分)を埋め込む。
+  `settings.js` の認証欄と `master.js` の表の面が、どちらも同じものを
+  出どころにする ── 2回取りに行くと、片方だけ古い、が起きる。
+#}
+<script>window.MASTER_FRAME = {{ master | tojson }};</script>
+<script type="module">
+  import { start } from "{{ url_for('material.static', filename='js/views/master.js') }}";
+  start(window.MASTER_FRAME);
+</script>
+<script type="module" src="{{ url_for('material.static', filename='js/views/settings.js') }}"></script>
+{% endblock %}

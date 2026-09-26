@@ -1,0 +1,104 @@
+<form id="mainForm" class="grid-main" autocomplete="off">
+
+  <!-- ============ 左: サイズ選択 ============ -->
+  <section class="card col-size">
+    <h2>コイルサイズ</h2>
+    <label class="cb-mode">
+      <input type="checkbox" id="cbMode" {{cbModeChecked}}>
+      <span>まとめてやりたい場合チェックon（丈1・丈2 同時）</span>
+    </label>
+    <p class="hint" id="modeHint">{{modeHint}}</p>
+
+    <div class="size-list">
+      {{{sizeRows}}}
+    </div>
+  </section>
+
+  <!-- ============ 中: 現状値 / 1条重量 ============ -->
+  <section class="col-mid">
+    <div class="card">
+      <h2>現状値</h2>
+      <div class="cur">
+        <div class="cur-ken"><span class="lab">検番</span><b id="lblKensaNo">{{lblKensaNo}}</b></div>
+        <table class="cur-tbl">
+          <thead><tr><th></th><th>サイズ</th><th>重量</th></tr></thead>
+          <tbody>
+            <tr><th>丈1</th><td id="lblSize1">{{lblSize1}}</td><td id="lblWeight1">{{lblWeight1}}</td></tr>
+            <tr><th>丈2</th><td id="lblSize2">{{lblSize2}}</td><td id="lblWeight2">{{lblWeight2}}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>1条重量</h2>
+      <div class="inputs-3">
+        <label>新検番
+          <input type="text" id="kensaNo" name="kensaNo" value="{{kensaNo}}"
+                 maxlength="7" inputmode="latin" data-filter="alnum"
+                 placeholder="例: W111111">
+        </label>
+        <label id="w1wrap">新重量 丈1
+          <input type="text" id="weight1" name="weight1" value="{{weight1}}"
+                 inputmode="decimal" data-filter="num">
+        </label>
+        <label id="w2wrap">新重量 丈2
+          <input type="text" id="weight2" name="weight2" value="{{weight2}}"
+                 inputmode="decimal" data-filter="num">
+        </label>
+      </div>
+      <button type="button" class="btn btn-wide" data-act="applyWeight">重量反映</button>
+      <p class="hint">検査番号は 1文字目=英字、2文字目・4〜7文字目=数字（VBA の判定と同一）。</p>
+    </div>
+  </section>
+
+  <!-- ============ 右: GW ============ -->
+  <section class="col-gw">
+    <div class="card">
+      <h2>GW</h2>
+      <fieldset class="tip">
+        <legend>チップボールサイズ</legend>
+        <label><input type="radio" name="tip" value="TIP1000" {{tip1000}}> 1000</label>
+        <label><input type="radio" name="tip" value="TIP950"  {{tip950}}> 950</label>
+        <label><input type="radio" name="tip" value="TIP820"  {{tip820}}> 820</label>
+      </fieldset>
+
+      <div class="take" id="take1">
+        <h3>丈1</h3>
+        {{{take1Rows}}}
+      </div>
+      <div class="take" id="take2">
+        <h3>丈2</h3>
+        {{{take2Rows}}}
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 操作 ============ -->
+  <section class="col-ops">
+    <div class="card">
+      <h2>GW操作</h2>
+      <button type="button" class="btn btn-primary" data-act="calcTare">重量計算_DB</button>
+      <button type="button" class="btn" data-act="printLabels">小ラベル印刷</button>
+      <hr>
+      <button type="button" class="btn" data-act="quickHeight">積み高さ計算</button>
+      <button type="button" class="btn btn-danger" data-act="clearAll">クリア</button>
+      <p class="hint">計算内容・羅列・計算内訳・ラベル台紙は、上のタブで見られます。</p>
+    </div>
+
+    <!-- 積み高さ計算の結果。消すまで残る（参考値なので作業中に見ていたい） -->
+    <div class="card dismissable" id="quickCard" hidden>
+      <h2>積み高さ（参考）
+        <button type="button" class="x" id="quickClose" title="消す">×</button>
+      </h2>
+      <table class="cur-tbl"><tbody>
+        <tr><th>巾</th><td id="qWidth"></td></tr>
+        <tr><th>ﾁｯﾌﾟ</th><td id="qTip"></td></tr>
+        <tr><th>1条分</th><td id="qOne"></td></tr>
+        <tr><th>ﾊﾟﾚｯﾄ+分</th><td id="qPallet"></td></tr>
+      </tbody></table>
+      <p class="hint">参考表示です。帳票には出ません。</p>
+    </div>
+
+  </section>
+</form>

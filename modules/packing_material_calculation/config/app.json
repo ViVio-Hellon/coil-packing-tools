@@ -1,0 +1,20 @@
+{
+  "app_id": "nlm.coil-material-tool",
+  "display_name": "コイル梱包資材計算ツール",
+  "version": "0.2.0",
+  "monitor_level": 1,
+  "local_dir_name": "CoilMaterialTool",
+  "server": {
+    "host": "127.0.0.1",
+    "port_retry": 3,
+    "roles": {
+      "main": {
+        "port": 8733
+      }
+    }
+  },
+  "monitoring": {
+    "health_poll_seconds": 15,
+    "job_poll_ms": 300
+  }
+}

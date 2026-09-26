@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ display_name }}</title>
+<link rel="stylesheet" href="{{ url_for('details.static', filename='css/meisai.css') }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230e6a72'/><text x='16' y='23' font-size='19' text-anchor='middle' fill='%23fff'>明</text></svg>">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="topbar">
+    <h1>{{ display_name }}</h1>
+    {#- **版は押せる。** 番号を出すだけだと「で、この版は何なの」で
+        止まる。押せば出どころ(実行フォルダ)と変更履歴まで辿れる -#}
+    <button type="button" class="ver" id="btnAbout"
+            title="バージョン情報">VER {{ version }}</button>
+    <span class="spacer"></span>
+    {#- 届くかどうかではなく、**取り込んであるか**を出す。
+        共有が切れていても手元のぶんは使えるので、`found` で分けると
+        「取り込んであるのに未取込」と出る(設定画面と食い違う) -#}
+    <span class="stamp" id="stamp">
+      {#- 区切りは実体参照で書く。全角空白をそのまま置くと
+          `{%- endfor -%}` が空白として刈り取ってしまい、
+          「仕掛ロット …26仕掛引当」と詰まって出る -#}
+      {%- for s in stamps -%}
+        <b>{{ s.table }}</b> {{ s.as_of_short }}&#12288;
+      {%- endfor -%}
+    </span>
+    {#- ボタンは1かたまりにする。ばらのままだと帯が詰まったときに
+        「説明書」だけ2行目へ落ちる -#}
+    <div class="tools">
+      <button type="button" id="btnImport">取り込み</button>
+      <button type="button" id="btnHistory">履歴</button>
+      <button type="button" id="btnMaster">マスタ管理</button>
+      <button type="button" id="btnSettings">設定</button>
+      <a href="{{ base }}/docs" target="_blank" rel="noopener"><button type="button">説明書</button></a>
+    </div>
+  </header>
+
+  <!-- 接続が切れたら明示する(基盤仕様書 2.9)。黙って古い表示を出し続けない -->
+  <div class="banner danger" id="offline" hidden>
+    バックエンドと通信できません。アプリを開き直してください。
+  </div>
+  <div class="banner" id="notice" hidden></div>
+
+  {% if not has_data %}
+  <div class="banner">
+    仕掛台帳がまだ取り込まれていません。右上の「取り込み」を押してください。
+    取り込み元が見つからない場合は、置き場所を設定で確かめてください。
+  </div>
+  {% endif %}
+
+  {#- 左に「引く→決める」の3枚、右に「積む→出す」。
+      **積み上げは3枚の横に置く。** 上下に離れていると、条番号を
+      押したあと目を下へ振ることになる -#}
+  <div class="layout">
+  <div class="main">
+
+  <!-- ============ ロット ============ -->
+  <section class="card">
+    <h2>ロット<span class="hint">{{ lot_no_length }}桁を入力すると自動で検索します</span></h2>
+    <div class="row gap-lg">
+      <div class="row">
+        <label for="lotNo">ロット番号</label>
+        <input type="text" id="lotNo" maxlength="{{ lot_no_length }}"
+               autocomplete="off" spellcheck="false" style="width:104px;text-transform:uppercase">
+      </div>
+      <div class="row">
+        <label for="zenKotei">前工程実績数</label>
+        <input type="text" id="zenKotei" readonly style="width:70px;text-align:center">
+        <button type="button" id="btnEditZen">修正する</button>
+        <span class="stamp" id="warisu"></span>
+      </div>
+      <div class="row" id="orderRow" hidden>
+        <label>受注</label><span class="stamp" id="orderCount"></span>
+        <div class="orders" id="orders"></div>
+        <label>包装仕様NO</label><span class="spec" id="specNo"></span>
+      </div>
+    </div>
+    <div class="banner" id="lotNote" hidden></div>
+
+    <div class="info" id="lotInfo" hidden>
+      <div class="pair"><span class="k">用途コード</span><span class="v" id="f_yoto_code"></span></div>
+      <div class="pair"><span class="k">用途名</span><span class="v" id="f_yoto_name"></span></div>
+      <div class="pair"><span class="k">製造材質</span><span class="v" id="f_zaishitsu"></span></div>
+      <div class="pair"><span class="k">製造調質</span><span class="v" id="f_choshitsu"></span></div>
+      <div class="pair"><span class="k">ｵｰﾀﾞｰ板厚</span><span class="v" id="f_odr_thickness"></span></div>
+      <div class="pair"><span class="k">ｵｰﾀﾞｰ板幅</span><span class="v" id="f_odr_width"></span></div>
+      <div class="pair"><span class="k">製造板厚</span><span class="v" id="f_seizou_thickness"></span></div>
+      <div class="pair"><span class="k">製造板幅</span><span class="v" id="f_seizou_width"></span></div>
+      <div class="pair wide"><span class="k">設計設備ｺｰｽ</span><span class="v" id="f_sekkei_course"></span></div>
+      <div class="pair wide"><span class="k">実績設備ｺｰｽ</span><span class="v" id="f_jisseki_course"></span></div>
+    </div>
+  </section>
+
+  <!-- ============ 丈数と重量 ============ -->
+  <section class="card" id="weightCard" hidden>
+    <h2>丈数と重量<span class="hint">重量は丈ごとに1つ。整数で入力します</span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <label for="jouSu">丈数</label>
+      <input type="text" id="jouSu" inputmode="numeric" style="width:50px;text-align:center">
+      <span class="spin">
+        <button type="button" data-jou="-1" aria-label="丈数を1減らす">−</button>
+        <button type="button" data-jou="1" aria-label="丈数を1増やす">＋</button>
+      </span>
+      <button type="button" class="primary" id="btnStrands">条番号表示</button>
+      <button type="button" id="btnReverse">反転</button>
+      <button type="button" id="btnHaiki">廃棄選択</button>
+    </div>
+    <div class="weights" id="weights"></div>
+  </section>
+
+  <!-- ============ 条番号 ============ -->
+  <section class="card" id="strandCard" hidden>
+    <h2>条番号<span class="hint" id="strandHint">クリックで積み上げへ</span></h2>
+    <div id="grid"></div>
+    <div class="legend">
+      <span><i></i>未使用</span>
+      <span><i class="used"></i>積み上げ済み・使用済み</span>
+      <span><i class="dis"></i>廃棄(×)</span>
+    </div>
+  </section>
+
+  </div>
+  <div class="side">
+
+  <!-- ============ 積み上げ ============ -->
+  <section class="card" id="stackCard" hidden>
+    <h2>積み上げ<span class="hint">クリックで解除</span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <label for="stackMax">積み条数</label>
+      <input type="text" id="stackMax" inputmode="numeric" style="width:50px;text-align:center">
+      <span class="stamp">最大{{ stack_limit }}</span>
+    </div>
+    <div class="stack" id="stack"></div>
+    <div class="stack-note">下＝スロット1（最初に積むもの）</div>
+
+    <div class="row" style="margin-top:10px">
+      <button type="button" class="primary" id="btnOutput" disabled>出力</button>
+      <button type="button" id="btnPrint" disabled>印刷</button>
+    </div>
+    <div class="stamp" id="printNote" style="margin-top:4px"></div>
+    <div class="row" style="margin-top:8px">
+      <label><input type="checkbox" id="chkSpecify"> No指定</label>
+      <input type="text" id="specifyNo" inputmode="numeric" disabled style="width:50px;text-align:center">
+    </div>
+    <div class="row" style="margin-top:6px">
+      <span class="stamp" id="seqNote"></span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" id="btnClearHistory">副番履歴クリア</button>
+    </div>
+  </section>
+
+  <!-- ============ 出力一覧 ============ -->
+  <section class="card" id="outputCard" hidden>
+    <h2>出力済み<span class="hint">A4横の左半分に1枚。チェックでまとめて刷れる</span></h2>
+    <div class="outputs" id="outputs"></div>
+  </section>
+
+  </div>
+  </div>
+
+</div>
+
+<!-- 設定。**欄ごとに保存する**(1つのボタンでまとめて保存すると、どの欄を
+     変えたのか・何が起きたのかが分からない ── 現場の指摘)。タブで分ける -->
+<dialog id="settingsDialog" aria-labelledby="setTitle">
+  <div class="head" id="setTitle">設定</div>
+  <div class="set-tabs" role="tablist" aria-label="設定の種類">
+    <button type="button" role="tab" id="tabPlace" aria-controls="panelPlace" data-tab="place" aria-selected="true">置き場所・取り込み</button>
+    <button type="button" role="tab" id="tabQa" aria-controls="panelQa" data-tab="qa" aria-selected="false">紙面の右上の文字</button>
+    <button type="button" role="tab" id="tabAdmin" aria-controls="panelAdmin" data-tab="admin" aria-selected="false">管理者パスワード</button>
+    <button type="button" role="tab" id="tabDist" aria-controls="panelDist" data-tab="dist" aria-selected="false">配布設定</button>
+  </div>
+  <div class="body">
+    <p class="stamp set-loading" id="setLoading" role="status" hidden></p>
+
+    <!-- ============ 置き場所・取り込み ============ -->
+    <div class="set-panel" role="tabpanel" id="panelPlace" aria-labelledby="tabPlace">
+      <section class="set-box" aria-labelledby="setLotHead">
+        <div class="set-box-head" id="setLotHead">仕掛台帳のフォルダ</div>
+        {#- **探しているファイル名を出す。** 道だけ出しても、そこに何を
+            置けばよいかが分からない -#}
+        <span class="stamp files" id="setLotFiles"></span>
+        <input type="text" id="setLotDir" spellcheck="false" autocomplete="off" aria-labelledby="setLotHead">
+        <span class="stamp" id="setLotNote"></span>
+        <div class="set-stamps" id="setLotStamps"></div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnLotSave">保存して取り込み</button>
+        </div>
+        <p class="set-note" id="setLotResult" role="status" hidden></p>
+      </section>
+
+      <section class="set-box" aria-labelledby="setKonpoHead">
+        <div class="set-box-head" id="setKonpoHead">梱包課共有の仕掛フォルダ</div>
+        <span class="stamp files" id="setKonpoFiles"></span>
+        <input type="text" id="setKonpoDir" spellcheck="false" autocomplete="off" aria-labelledby="setKonpoHead">
+        <span class="stamp" id="setKonpoNote"></span>
+        <div class="set-stamps" id="setKonpoStamps"></div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnKonpoSave">保存して取り込み</button>
+        </div>
+        <p class="set-note" id="setKonpoResult" role="status" hidden></p>
+      </section>
+
+      {#- 共有(全ライン)。右上の文字・マスタ管理・履歴がここを見る。刷る文字の
+          出どころが変わるので**管理者パスワードで守る** -#}
+      <section class="set-box set-box-shared" id="setShareBox" aria-labelledby="setShareHead">
+        <div class="set-box-head" id="setShareHead">梱包資材マスタのフォルダ（共有）
+          <span class="stamp">変えるには管理者パスワードが要ります</span></div>
+        <span class="stamp files" id="setShareFiles"></span>
+        <span class="stamp" id="setShareUses">「マスタ管理」「履歴」・紙面の右上の文字は、この場所を見ます。</span>
+        <input type="text" id="setShareDir" spellcheck="false" autocomplete="off" aria-labelledby="setShareHead">
+        <span class="stamp" id="setShareNow"></span>
+        <div class="set-row set-row-inline">
+          <label for="setSharePassword">管理者パスワード</label>
+          <input type="password" id="setSharePassword" autocomplete="off">
+        </div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnShareSave">保存</button>
+        </div>
+        <p class="set-note" id="setShareNote" role="status" hidden></p>
+      </section>
+
+      <p class="stamp" style="margin-top:4px">
+        空にして保存すると既定の置き場所に戻ります。相対で書くとアプリのフォルダから
+        たどります（共有に届かない端末で、手元の写しを指すのに使えます）。
+      </p>
+      <div id="setPaths" class="stamp" style="margin-top:6px"></div>
+    </div>
+
+    <!-- ============ 紙面の右上の文字 ============ -->
+    {#- 紙面の右上の文字(既定 NLM.NAGOYA.QA)。**全ラインで共有**して、
+        **管理者パスワードで守る。** 品質の印として刷っている文字なので、
+        開いた人が押し間違いで変えられる、にはしない -#}
+    <div class="set-panel" role="tabpanel" id="panelQa" aria-labelledby="tabQa" hidden>
+      <section class="set-box set-qa" aria-labelledby="setQaHead">
+        <div class="set-qa-head" id="setQaHead">紙面の右上の文字（全ラインで共有）
+          <span class="stamp">変えるには管理者パスワードが要ります</span></div>
+        <div class="set-qa-now">いま刷る文字 <b id="setQaNow"></b>
+          <span class="stamp" id="setQaKind"></span></div>
+        {#- **どこから読んだ値か。** 共有に届かないときは、この端末の写しで
+            刷っていて、変えられない。黙らない -#}
+        <div class="set-share" id="setShare"></div>
+        <div class="set-row">
+          <label for="setQaValue">新しい文字 <span class="stamp" id="setQaCount"></span></label>
+          <input type="text" id="setQaValue" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="set-row">
+          <label for="setQaPassword">管理者パスワード</label>
+          <input type="password" id="setQaPassword" autocomplete="off">
+        </div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnQaSave">保存</button>
+          <button type="button" id="btnQaReset">既定に戻す</button>
+        </div>
+        <p class="set-note" id="setQaNote" role="status" hidden></p>
+      </section>
+    </div>
+
+    <!-- ============ 管理者パスワード ============ -->
+    <div class="set-panel" role="tabpanel" id="panelAdmin" aria-labelledby="tabAdmin" hidden>
+      <section class="set-box" aria-labelledby="setAdminHead">
+        <div class="set-box-head" id="setAdminHead">管理者パスワードを変える（全ラインで共有）</div>
+        <p class="stamp">紙面の右上の文字・梱包資材マスタのフォルダ・配布設定を変えるときに使います。</p>
+        <div class="set-row">
+          <label for="setAdminCurrent">いまのパスワード</label>
+          <input type="password" id="setAdminCurrent" autocomplete="off">
+        </div>
+        <div class="set-row">
+          <label for="setAdminNew">新しいパスワード <span class="stamp" id="setAdminMin"></span></label>
+          <input type="password" id="setAdminNew" autocomplete="new-password">
+        </div>
+        <div class="set-row">
+          <label for="setAdminConfirm">新しいパスワード（確認）</label>
+          <input type="password" id="setAdminConfirm" autocomplete="new-password">
+        </div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnAdminSave">保存</button>
+        </div>
+        <p class="set-note" id="setAdminNote" role="status" hidden></p>
+      </section>
+    </div>
+
+    <!-- ============ 配布設定 ============ -->
+    {#- 梱包資材総合ツールの配布設定を移したもの(`meisai/distribution.py`)。
+        1台で決めた設定を、アプリのフォルダごと配った先でそのまま使う -#}
+    <div class="set-panel" role="tabpanel" id="panelDist" aria-labelledby="tabDist" hidden>
+      <section class="set-box" aria-labelledby="distHead">
+        <div class="set-box-head" id="distHead">いま置いてある配布設定
+          <span class="m-badge" id="distState"></span></div>
+        <p class="stamp" id="distMeta"></p>
+        <div class="tscroll dist-table"><table class="his-table">
+          <thead><tr><th>項目</th><th>値</th></tr></thead>
+          <tbody id="distRows"></tbody>
+        </table></div>
+        <p class="stamp">置き場所: <code id="distPath"></code></p>
+      </section>
+      <section class="set-box" aria-labelledby="distOutHead">
+        <div class="set-box-head" id="distOutHead">この端末の設定を配布設定にする</div>
+        <p class="stamp">いまこの端末に入っている値を書き出します（前の中身は置き換えます）。
+          配った先は<b>起動したときに読み込みます</b>。ただし<b>その端末にすでにある設定は
+          読み込みません</b>（上書きしない）。揃えたいときは、配った先で「読み込み直す」。</p>
+        <fieldset class="dist-items" id="distItems">
+          <legend>入れる項目</legend>
+        </fieldset>
+        <ul class="stamp dist-not" id="distNot"></ul>
+        <div class="set-row set-row-inline">
+          <label for="distPassword">管理者パスワード</label>
+          <input type="password" id="distPassword" autocomplete="off">
+        </div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnDistExport">配布設定を書き出す</button>
+          <button type="button" id="btnDistReapply">配布設定を読み込み直す</button>
+          <button type="button" class="danger" id="btnDistRemove">配布設定を消す</button>
+        </div>
+        <p class="set-note" id="distNote" role="status" hidden></p>
+      </section>
+    </div>
+  </div>
+  <div class="foot">
+    <button type="button" id="btnSettingsClose">閉じる</button>
+  </div>
+</dialog>
+
+<!-- 時間のかかる処理(取り込み)の進み具合。**黙って待たせない**(現場の指摘:
+     押しても反応が鈍い)。何を読んでいるか・何秒たったかを出す -->
+<dialog id="busyDialog" aria-labelledby="busyTitle">
+  <div class="head" id="busyTitle">取り込み中</div>
+  <div class="body">
+    <div class="busy-msg" id="busyMsg" role="status" aria-live="polite"></div>
+    <div class="busy-bar" aria-hidden="true"><i id="busyBar"></i></div>
+    <div class="stamp" id="busyTime"></div>
+    <p class="stamp">終わると自動で閉じます。このままお待ちください。</p>
+  </div>
+</dialog>
+
+<!-- 明細の履歴(全ライン・3年)。探す・紙面を作り直す・CSV に書き出す。
+     **ブラウザのダウンロードはしない。こちらから Excel なども開かない**
+     (開くのは使う人がすること) ── CSV は書き出し先に書いて、場所を出すだけ -->
+<dialog id="historyDialog">
+  <div class="head">明細の履歴（全ライン・3年）</div>
+  <div class="body">
+    <div class="set-share" id="hisState"></div>
+    <div class="set-qa-buttons">
+      <button type="button" id="btnHisSend">いま送る</button>
+    </div>
+    <p class="set-note" id="hisSendNote" role="status" hidden></p>
+
+    <section class="set-qa his-export" aria-labelledby="hisFindHead">
+      <div class="set-qa-head" id="hisFindHead">探す
+        <span class="stamp">出力日・ロット番号・副番で。このコイルはどの紙か、も探せます</span></div>
+      <div class="his-range">
+        <div class="set-row">
+          <label for="hisFrom">はじめ（出力日）</label>
+          <input type="date" id="hisFrom">
+        </div>
+        <div class="set-row">
+          <label for="hisTo">おわり（出力日）</label>
+          <input type="date" id="hisTo">
+        </div>
+        <div class="set-row">
+          <label for="hisLot">ロット番号 <span class="stamp">前方一致</span></label>
+          <input type="text" id="hisLot" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="set-row">
+          <label for="hisFuban">副番 <span class="stamp">例 1-10</span></label>
+          <input type="text" id="hisFuban" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <div class="set-qa-buttons">
+        <button type="button" class="primary" id="btnHisSearch">探す</button>
+        <button type="button" id="btnHisExport">CSVに書き出す</button>
+      </div>
+      <p class="set-note" id="hisFindNote" role="status" hidden></p>
+
+      <div class="his-result" id="hisResult" hidden>
+        <div class="tscroll">
+          <table class="his-table">
+            <thead><tr><th><span class="sr-only">選ぶ</span></th><th>出力日時</th>
+              <th>ロット-No</th><th>本数</th><th>副番</th><th>状態</th><th>PC</th></tr></thead>
+            <tbody id="hisRows"></tbody>
+          </table>
+        </div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnHisReprint" disabled>選んだ紙面を開く</button>
+          <span class="stamp" id="hisPicked"></span>
+        </div>
+      </div>
+
+      <div class="his-files" id="hisFiles" hidden>
+        <div>明細（1行 = コイル1本）: <code id="hisDetailName"></code></div>
+        <div>集計（出力日 × PC）: <code id="hisSummaryName"></code></div>
+        <div>場所: <code id="hisFolder"></code>
+          <button type="button" id="btnHisCopyFolder">場所をコピー</button></div>
+      </div>
+    </section>
+  </div>
+  <div class="foot">
+    <button type="button" id="btnHisClose">閉じる</button>
+  </div>
+</dialog>
+
+<!-- マスタ管理(見るだけ)。梱包資材総合ツールのマスタ管理の「中身を見る」を移したもの。
+     **直すところは移していない**(梱包資材マスタを直すのは総合ツール)。
+     CSV は書き出し先に書いて場所を出すだけ ── **ダウンロードはしない。こちらから
+     Excel なども開かない**(開くのは使う人がすること) -->
+<dialog id="masterDialog" aria-labelledby="mHeadTitle">
+  <div class="head" id="mHeadTitle">マスタ管理（見るだけ）</div>
+  <div class="body">
+    <div class="m-sources" id="mSources" role="group" aria-label="見るファイル"></div>
+    <div class="set-share" id="mSource"></div>
+    <p class="set-note bad" id="mError" role="alert" hidden></p>
+    {#- 置き場所の断り(届かない・無い)なら、**直す所へ飛べる**ようにする。
+        設定で変えると、すぐその場所を見る -#}
+    <div class="set-qa-buttons" id="mFixRow" hidden>
+      <button type="button" class="primary" id="mFix">設定で置き場所を変える</button>
+    </div>
+    <div class="m-layout">
+      <nav class="m-tables" id="mTables" aria-label="表"></nav>
+      <div class="m-main">
+        <div class="m-title">
+          <b id="mTitle"></b>
+          <span class="m-badge" id="mCan">見るだけ</span>
+          <span class="stamp" id="mCount"></span>
+        </div>
+        <div class="stamp m-sub" id="mSub"></div>
+        <div class="m-find">
+          <input type="search" id="mQuery" spellcheck="false" autocomplete="off"
+                 placeholder="どの列でも（一部でよい）" aria-label="絞り込む文字">
+          <button type="button" class="primary" id="mFind">絞り込む</button>
+          <button type="button" id="mReload">読み直す</button>
+          <button type="button" id="mExport">この表をCSVに書き出す</button>
+          <span class="stamp" id="mBusy" role="status"></span>
+        </div>
+        <p class="set-note" id="mNote" hidden></p>
+        <div class="tscroll m-scroll">
+          <table class="his-table m-table">
+            <thead id="mHead"></thead>
+            <tbody id="mRows"></tbody>
+          </table>
+        </div>
+        <p class="set-note" id="mExportNote" role="status" hidden></p>
+        <div class="his-files" id="mOut" hidden>
+          <div>ファイル: <code id="mOutName"></code></div>
+          <div>場所: <code id="mOutFolder"></code>
+            <button type="button" id="btnMCopyFolder">場所をコピー</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <button type="button" id="btnMasterClose">閉じる</button>
+  </div>
+</dialog>
+
+<!-- 1行の中身。**見るだけ**(打ち込める形にしない) -->
+<dialog id="masterRowDialog" aria-labelledby="mRowTitle">
+  <div class="head" id="mRowTitle"></div>
+  <div class="body">
+    <dl class="m-fields" id="mRowFields"></dl>
+  </div>
+  <div class="foot">
+    <button type="button" class="primary" id="btnMRowClose">閉じる</button>
+  </div>
+</dialog>
+
+{#- 2枚目を開いたときの覆い。**業務の画面は出さない。**
+    押せそうで押せないものを並べない -#}
+<div class="taken" id="secondScreen" hidden>
+  <div class="card">
+    <h2>この画面はすでに開いています</h2>
+    <p>
+      <b>このアプリは1枚しか開けません。</b>
+      作業の状態（開いているロット・条番号・積み上げ）は
+      <b>アプリ全体でひとつ</b>だからです。
+      2枚開くと、<b>先に開いた画面のロットが、触った瞬間に
+      もう1枚のロットへ化けます。</b>
+    </p>
+    <p>
+      すでに開いている画面（別のタブかウィンドウ）に戻ってお使いください。
+      見当たらない場合は、下の「この画面で使う」で引き継げます。
+    </p>
+    <p class="stamp" id="secondNote"></p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="primary" id="btnSecondTake">この画面で使う</button>
+      <button type="button" id="btnSecondRetry">もう一度ためす</button>
+    </div>
+    <p class="stamp" style="margin-top:8px">
+      「この画面で使う」を押すと、<b>前の画面は使えなくなります</b>
+      （2枚になるのではなく、こちらへ移ります）。
+      作業の途中経過は保存してあるので、続きから再開できます。
+    </p>
+  </div>
+</div>
+
+{#- 引き継がれたときの覆い。**消さずに止める** ── 画面ごと消すと
+    「何が起きたのか」が分からない -#}
+<div class="taken" id="takenOver" hidden>
+  <div class="card">
+    <h2>この画面は引き継がれました</h2>
+    <p>
+      同じアプリを別のタブで開き、そちらへ移りました。
+      <b>ここに出ている値は、もう別のロットのものかもしれません。</b>
+      そのまま操作すると、現物と紙が食い違います。
+    </p>
+    <p class="stamp">
+      作業の途中経過は保存してあります。
+      新しいほうの画面で、同じロット番号を入れ直せば続きから再開できます。
+    </p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="primary" id="btnRetake">この画面で使う</button>
+    </div>
+  </div>
+</div>
+
+{#- 画面を開いているあいだにアプリが開き直された(裏に回っていた・
+    スリープしていたあいだなど)。**この画面は古い**(トークンが通らない)
+    ので、読み込み直してもらう。覆いは `.wrap` の外に置く ── 中に置くと、
+    下の画面を止めたときに「読み込み直す」まで押せなくなる -#}
+<div class="taken" id="restarted" hidden>
+  <div class="card">
+    <h2>アプリが開き直されています</h2>
+    <p>
+      この画面を開いているあいだに、アプリが開き直されました。
+      <b>この画面はもう古い</b>ので、読み込み直してください。
+    </p>
+    <p class="stamp">
+      作業の途中経過は保存してあります。読み込み直せば続きから再開できます。
+    </p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="primary" id="btnReload">読み込み直す</button>
+    </div>
+  </div>
+</div>
+
+<!-- バージョン情報。「いまどれが入っているか」を端末の上で言えるように -->
+<dialog id="aboutDialog">
+  <div class="head">バージョン情報</div>
+  <div class="body">
+    <div class="about-ver">
+      <span class="num" id="abVer">VER {{ version }}</span>
+      <span class="nm">{{ display_name }}</span>
+    </div>
+    <div class="banner danger" id="abProblem" hidden></div>
+    {#- **実行フォルダを必ず出す。** 現場はフォルダごとコピーして配るので、
+        「入れ替えたのに古いまま」のとき、どれが動いているかはここでしか
+        分からない -#}
+    <dl class="about">
+      <dt>実行フォルダ</dt><dd class="mono" id="abRoot">—</dd>
+      <dt>アプリID</dt><dd class="mono" id="abAppId">—</dd>
+      <dt>ポート / PID</dt><dd class="mono" id="abPort">—</dd>
+      <dt>起動してから</dt><dd class="mono" id="abUptime">—</dd>
+      <dt>Python</dt><dd class="mono" id="abPython">—</dd>
+      <dt>手元のDB</dt><dd class="mono" id="abDb">—</dd>
+      <dt>ログ</dt><dd class="mono" id="abLog">—</dd>
+    </dl>
+    <div id="abStamps" class="set-stamps"></div>
+  </div>
+  <div class="foot">
+    {#- 読みものは左でひとかたまり。3つを等間隔に散らすと
+        「説明書」が宙に浮く -#}
+    <span class="tools">
+      <a href="{{ base }}/docs/変更履歴" target="_blank" rel="noopener"><button type="button">変更履歴</button></a>
+      <a href="{{ base }}/docs" target="_blank" rel="noopener"><button type="button">説明書</button></a>
+    </span>
+    <button type="button" id="btnAboutClose" class="primary">閉じる</button>
+  </div>
+</dialog>
+
+<!-- 確認ダイアログ。VBA の MsgBox ... vbYesNo にあたる -->
+<dialog id="confirmDialog">
+  <form method="dialog">
+    <div class="head" id="confirmTitle">確認</div>
+    <div class="body" id="confirmBody"></div>
+    <div class="foot">
+      <button value="no">いいえ</button>
+      <button value="yes" class="primary">はい</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  window.APP = {
+    token: {{ token|tojson }},
+    // この機能の入口(統合版では `/details`)。JS が経路に付ける
+    base: {{ base|tojson }},
+    // この画面の名前。**起動のときにブラウザ側で決める**
+    // (再読込と2枚目を見分けられるのはブラウザだけ。`screen.js`)
+    screen: "",
+    alivePollMs: {{ alive_poll_ms }},
+    // この画面を出したプロセス。前に戻ったとき、違っていれば開き直されている
+    serverPid: {{ server_pid }},
+    healthPollMs: {{ health_poll_ms }},
+    jousuMax: {{ jousu_max }},
+    stackLimit: {{ stack_limit }},
+    lotNoLength: {{ lot_no_length }},
+    hosoUrl: {{ hoso_url|tojson }},
+    state: {{ state|tojson }}
+  };
+</script>
+<script type="module" src="{{ url_for('details.static', filename='js/meisai.js') }}"></script>
+</body>
+</html>

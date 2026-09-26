@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ ribbon.display_name }}{% endblock %}</title>
+{# タブの印。外部ファイルにしないのは、要求を1本減らすため #}
+<link rel="icon" href="data:image/svg+xml,
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>
+  <rect width='16' height='16' rx='3' fill='%230b5d51'/>
+  <text x='8' y='12' font-size='11' text-anchor='middle' fill='white'>資</text></svg>">
+<link rel="stylesheet" href="{{ url_for('material.static', filename='css/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('material.static', filename='css/base.css') }}">
+<link rel="stylesheet" href="{{ url_for('material.static', filename='css/components.css') }}">
+<link rel="stylesheet" href="{{ url_for('material.static', filename='css/layout.css') }}">
+<link rel="stylesheet" href="{{ url_for('material.static', filename='css/coil.css') }}">
+{% block head %}{% endblock %}
+</head>
+<body>
+
+<!--
+  アプリの外枠。
+
+  ・帯   … いま何が決まっているか(版・取り込み日時・ライン・担当者)を常時出す
+  ・レール … 5画面。並びは作業の順序
+  ・接続断の帯 … 基盤仕様書 2.9。黙って古い表示を出し続けない
+-->
+
+<div class="offline" id="offline" hidden role="alert">
+  <span>バックエンドに接続できません</span>
+  <button class="btn" type="button" onclick="location.reload()">再読込</button>
+</div>
+
+{#
+  帯と本体は**通るまで出さない**(`hidden`)。覆いをかぶせるだけでは
+  見えなくなるだけで、Tab キーでは後ろの欄に入れてしまう ──
+  断られている画面から打ててしまっては、覆いの意味が無い。
+  外すのは `app.js` の申し出が通ったときだけ。
+#}
+<header class="ribbon" hidden>
+  {#
+    版は**常に見える場所に、読める大きさで**出す。現場の端末はフォルダごと
+    写して配るので、「どれが入っているか」を電話越しに答えられないと、
+    直したはずの不具合の話が噛み合わない。
+    押すと設定の「このアプリについて」へ飛ぶ ── 番号だけでは足りない
+    ことを聞かれたとき(置き場所・ポート・Python)に辿れる。
+  #}
+  <div class="brand">
+    <b class="brand__name">{{ ribbon.display_name }}</b>
+    <a class="ver" href="{{ base }}/settings?t={{ token }}#about"
+       title="このアプリの版。押すと詳しい情報が出ます">{{ ribbon.version_label }}</a>
+  </div>
+
+  <div class="ribbon__slots">
+    {#
+      取り込み日時をいつも出す。マスタは取り込んだ時点の写しなので、
+      古いまま計算していると気づけない。古ければ印を付けて促す。
+
+      「古い」は**取り込んだ日と今日が違えば**出る。仕掛台帳は日々の
+      台帳なので、日付が変われば上流の中身も変わる。経過時間で見ると、
+      23:50 に取り込んで翌 00:10 に使ったときに古くならない。
+    #}
+    <div class="slot">
+      <span class="slot__k">マスタ</span>
+      <span class="slot__v" id="rb-imported">
+        {{ ribbon.imported_at or '未取り込み' }}
+      </span>
+      {% if ribbon.stale %}
+      <a class="chip chip--alert" href="{{ base }}/settings?t={{ token }}"
+         title="{{ ribbon.stale_why }}。取り込み直してください">古い</a>
+      {% endif %}
+    </div>
+
+    <label class="slot">
+      <span class="slot__k">ライン</span>
+      <select class="input" id="rb-line" aria-label="ライン">
+        {% for l in ribbon.lines %}
+        <option value="{{ l }}" {% if l == ribbon.line %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="slot">
+      <span class="slot__k">担当者</span>
+      <select class="input" id="rb-worker" aria-label="担当者">
+{#
+          担当者は梱包資材マスタの「班員名簿」から、**担当ラインが
+          機側の人だけ**。班ごとに束ねて出す ── 名前だけを何十行も
+          並べても、目当ての人を探せない。
+          名簿が取り込めていなければ、班の見出しは空で予備の一覧が出る。
+        #}
+        <option value="">(未選択)</option>
+        {% for g in ribbon.workers.groups %}
+          {% if g.team %}
+          <optgroup label="{{ g.team }}">
+            {% for w in g.names %}
+            <option value="{{ w }}" {% if w == ribbon.worker %}selected{% endif %}>{{ w }}</option>
+            {% endfor %}
+          </optgroup>
+          {% else %}
+            {% for w in g.names %}
+            <option value="{{ w }}" {% if w == ribbon.worker %}selected{% endif %}>{{ w }}</option>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="ribbon__end">
+    <button class="btn btn--danger" type="button" id="quit"
+            title="このアプリを終了します">終了</button>
+  </div>
+</header>
+
+<div class="shell" hidden>
+  <nav class="rail" aria-label="画面">
+    {% for p in pages %}
+    <a class="rail__item {% if p.key == page.key %}rail__item--on{% endif %}"
+       href="{{ base }}{{ p.path }}?t={{ token }}" title="{{ p.detail }}"
+       {% if p.key == page.key %}aria-current="page"{% endif %}>
+      <span class="rail__name">{{ p.label }}</span>
+      <span class="rail__d">{{ p.detail }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <main id="main">
+    {% block main %}{% endblock %}
+  </main>
+</div>
+
+{#
+  知らせは**画面に固定された入れ物の中**に置く。`position:fixed` を
+  持っているのは `.toasts`(入れ物)のほうで、`.toast` 単体は
+  文書の流れに置かれる ── 入れ物なしで置いていたため、知らせが
+  ページのいちばん下に出ていて、画面には入っていなかった。
+  押しても何も起きないように見えるので「ボタンが効かない」になる。
+#}
+<div class="toasts">
+  <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+</div>
+
+{#
+  使ってよい画面は1つだけ。**覆いを掛けた姿で出して、通ったら外す。**
+
+  隠しておいて後から掛けるのでは、掛かるまでの一瞬だけ操作できて
+  しまう。断る画面では、その一瞬に打った値が消える。
+  理由は `app/screen.py`、配線は `app/static/js/app.js`。
+#}
+<div class="gate" id="gate" role="alertdialog" aria-modal="true"
+     aria-labelledby="gateTitle">
+  <div class="gate__card">
+    <h2 class="gate__t" id="gateTitle">確認しています…</h2>
+    <p class="gate__d" id="gateBody">
+      この画面を使ってよいか、アプリに聞いています。
+    </p>
+    <div class="btnrow" id="gateActions" hidden>
+      <button class="btn btn--commit" type="button" id="gateTake">
+        この画面で使う
+      </button>
+      <button class="btn" type="button" id="gateClose">このタブを閉じる</button>
+    </div>
+    <p class="gate__note" id="gateNote" hidden></p>
+  </div>
+</div>
+
+<script>window.APP_TOKEN = {{ token | tojson }}; window.APP_BASE = {{ base | tojson }};</script>
+<script type="module" src="{{ url_for('material.static', filename='js/app.js') }}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "アプリ固有値。ここだけを直せば アプリID / ポート / 参照先 を変更できる。",
+    "aim_ref_path      : VBA 定数 PATH_AIM_参照 に相当。梱包資材マスタ.accdb の親フォルダ（末尾は区切り不要）",
+    "debug_print_path  : VBA 定数 PATH_梱包_日報DebugPrint に相当（共有ログ出力先）",
+    "prefer_access     : true=Access を優先（本番） / false=常に CSV（開発・検証）",
+    "quick_height_width_override: 積み高さクイック計算だけ巾を変えたい場合に指定",
+    "material_refresh_sec : 資材マスタの鮮度チェック間隔(秒)。0 で毎回チェック",
+    "db_idle_close_sec    : 無操作でこの秒数が過ぎたら状態DBの接続を閉じる。0 で閉じない",
+    "db_busy_timeout_ms   : 状態DBのロック待ち時間(ms)",
+    "",
+    "※ aim_ref_path は VBA の Public Const PATH_AIM_参照 と同じ値を既定にしてある。",
+    "  端末ごとに変えたい場合は 設定画面（/settings）から上書きできる",
+    "  （このファイルは書き換わらない。上書きは local.json に入る）。",
+    "  到達できないときは CSV へフォールバックし、画面上部に「CSV（検証用）」と出る。",
+    "",
+    "※ version / build はここには書かない。アプリの版はコード（app/config.py）が持つ。",
+    "  ここに書くと中身を差し替えても画面の版番号が動かなくなる。"
+  ],
+  "app_id": "PackingPenaLabel",
+  "app_name": "梱包ペナ ラベル・風袋計算",
+  "host": "127.0.0.1",
+  "port": 8731,
+
+  "aim_ref_path": "\\\\nlmsrvngy03\\各課共有\\0130_日軽稲沢\\梱包課\\AIM\\【■】_参照用ファイル\\",
+  "debug_print_path": "",
+
+  "prefer_access": true,
+  "access_timeout_sec": 60,
+  "material_refresh_sec": 300,
+
+  "db_idle_close_sec": 120,
+  "db_busy_timeout_ms": 15000,
+
+  "quick_height_width_override": {},
+
+  "monitor_level": 1
+}

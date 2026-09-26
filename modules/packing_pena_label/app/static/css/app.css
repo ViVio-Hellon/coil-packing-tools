@@ -1,0 +1,462 @@
+/* 梱包ペナ ラベル・風袋計算 — 画面スタイル
+   ライン端末（1366x768 想定）で 1 画面に収まることを優先する。 */
+
+:root{
+  --bg:#eef1f5; --panel:#fff; --line:#c6cdd6; --ink:#16202c; --muted:#5d6b7a;
+  --accent:#1457a8; --accent-ink:#fff; --warn:#a35a00; --err:#b3261e; --ok:#1c7a3e;
+  --focus:#0b63ce; --head:#dfe6ef;
+  --r:6px;
+}
+*{box-sizing:border-box}
+/* hidden 属性は必ず効かせる。
+   ブラウザー既定の [hidden]{display:none} は作者スタイルの
+   .foo{display:flex} 等に負けるため、el.hidden = true が
+   「効いているのに見えたまま」になる。 */
+[hidden]{display:none !important}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Meiryo","メイリオ","Yu Gothic UI",system-ui,sans-serif;
+  font-size:13px; color:var(--ink); background:var(--bg);
+}
+h1,h2,h3{margin:0 0 .5em}
+h2{font-size:13px; padding:4px 8px; background:var(--head);
+   border:1px solid var(--line); border-radius:var(--r) var(--r) 0 0;}
+h3{font-size:12px; color:var(--muted); margin:.6em 0 .3em}
+hr{border:0; border-top:1px solid var(--line); margin:8px 0}
+a{color:var(--accent)}
+
+/* ---------- 外枠 ---------- */
+.appbar{display:flex; align-items:center; gap:16px; padding:6px 12px;
+  background:var(--panel); border-bottom:1px solid var(--line);
+  position:sticky; top:0; z-index:20;}
+.appbar-title{font-weight:700; white-space:nowrap}
+.appver{margin-left:6px; font-weight:400; font-size:11px; color:var(--muted);
+  padding:1px 6px; border:1px solid var(--line); border-radius:9px;
+  vertical-align:2px}
+/* 版を切った日。版番号だけだと「差し替わったか」が読み取れないため添える */
+.appstamp{margin-left:5px; opacity:.75}
+.appbar-nav{display:flex; gap:4px; flex-wrap:wrap; flex:1}
+.appbar-nav a{padding:4px 10px; border-radius:var(--r); text-decoration:none;
+  color:var(--ink); border:1px solid transparent}
+.appbar-nav a:hover{background:var(--head)}
+.appbar-nav a.on{background:var(--accent); color:var(--accent-ink)}
+.appbar-right{display:flex; align-items:center; gap:8px; white-space:nowrap}
+.src{font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid var(--line)}
+.src-access{background:#e3f2e8; color:var(--ok); border-color:#a9d6bb}
+.src-sqlite{background:#e3f2e8; color:var(--ok); border-color:#a9d6bb}
+.src-csv{background:#fdf3e0; color:var(--warn); border-color:#e5c790}
+.src.stale{background:#fde8e7; color:var(--err); border-color:#e6b3af}
+.conn{font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid var(--line)}
+.conn.ok{background:#e3f2e8; color:var(--ok); border-color:#a9d6bb}
+.conn.ng{background:#fde8e7; color:var(--err); border-color:#e6b3af}
+
+.page{padding:10px 12px 60px}
+.appfoot{position:fixed; bottom:0; left:0; right:0; display:flex; gap:18px;
+  padding:4px 12px; font-size:11px; color:var(--muted);
+  background:var(--panel); border-top:1px solid var(--line)}
+
+/* ---------- カード ---------- */
+.card{background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--r); margin-bottom:10px}
+.card>*:not(h2){margin-left:10px; margin-right:10px}
+.card>h2+*{margin-top:8px}
+.card>:last-child{margin-bottom:10px}
+.hint{font-size:11px; color:var(--muted); line-height:1.5}
+
+/* ---------- メイン配置 ---------- */
+.grid-main{display:grid; gap:10px;
+  grid-template-columns:minmax(260px,1.15fr) minmax(280px,1.25fr) minmax(260px,1.1fr) minmax(170px,.75fr);
+  align-items:start}
+@media (max-width:1200px){ .grid-main{grid-template-columns:1fr 1fr} }
+@media (max-width:760px){ .grid-main{grid-template-columns:1fr} }
+
+/* ---------- サイズ選択 ---------- */
+.cb-mode{display:flex; gap:6px; align-items:center; font-weight:700}
+.size-list{display:flex; flex-direction:column; gap:4px}
+.size-row{border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
+.size-row .sz-head{padding:2px 8px; font-weight:700; font-size:12px}
+.size-row .sz-opts{display:flex}
+.size-row label{flex:1; display:flex; gap:5px; align-items:center;
+  padding:3px 8px; cursor:pointer; font-size:12px}
+.size-row label:hover{background:#0000000d}
+.size-row.on{outline:2px solid var(--focus); outline-offset:-2px}
+.size-note{font-size:10px; color:var(--err); padding:0 8px 2px}
+
+/* サイズ別の色分け（VBA フォームの配色を踏襲） */
+.sz-08-53 .sz-head{background:#ffff9e}
+.sz-10-33 .sz-head{background:#ccccff}
+.sz-10-73 .sz-head{background:#ffff00}
+.sz-06-825 .sz-head{background:#00e000}
+.sz-10-535 .sz-head{background:#ff9d3c}
+.sz-10-63  .sz-head{background:#2e5cff; color:#fff}
+.sz-10-40  .sz-head{background:#d8d8d8}
+
+/* ---------- 現状値 ---------- */
+.cur-ken{margin-bottom:6px}
+.cur-ken .lab{font-size:11px; color:var(--muted); margin-right:8px}
+.cur-ken b{font-size:16px; letter-spacing:.06em}
+.cur-tbl{width:100%; border-collapse:collapse; font-size:12px}
+.cur-tbl th,.cur-tbl td{border:1px solid var(--line); padding:3px 6px; text-align:left}
+.cur-tbl thead th{background:var(--head)}
+.cur-tbl tbody th{width:44px; background:#f4f6f9}
+
+/* ---------- 入力 ---------- */
+.inputs-3{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+@media (max-width:520px){ .inputs-3{grid-template-columns:1fr} }
+label{display:block; font-size:11px; color:var(--muted)}
+input[type=text],input[type=number],select{
+  width:100%; padding:5px 6px; margin-top:2px; font-size:14px;
+  border:1px solid var(--line); border-radius:4px; background:#ffffe0;
+  font-family:inherit}
+input:focus,select:focus{outline:2px solid var(--focus); outline-offset:-1px}
+input[readonly]{background:#f1f3f6; color:var(--muted)}
+fieldset{border:1px solid var(--line); border-radius:var(--r); padding:6px 8px; margin:0 0 8px}
+legend{font-size:11px; color:var(--muted); padding:0 4px}
+.tip{display:flex; gap:14px; align-items:center; flex-wrap:wrap}
+.tip label{display:flex; gap:4px; align-items:center; color:var(--ink); font-size:13px}
+
+/* ---------- GW 表 ---------- */
+.take{border:1px solid var(--line); border-radius:var(--r); padding:6px 8px; margin-bottom:8px}
+.take.off{opacity:.38}
+.take.off input{background:#f1f3f6}
+.pack{display:grid; grid-template-columns:76px 1fr 1fr 1fr; gap:5px;
+  align-items:end; margin-bottom:5px}
+.pack .plab{font-size:11px; color:var(--muted); padding-bottom:5px}
+.pack .out{padding:5px 6px; border:1px solid var(--line); border-radius:4px;
+  background:#f4f6f9; text-align:right; font-variant-numeric:tabular-nums;
+  min-height:27px; font-size:13px}
+.pack .cap{font-size:10px; color:var(--muted); display:block}
+
+/* ---------- ボタン ---------- */
+.btn{display:block; width:100%; padding:7px 10px; margin-bottom:6px;
+  font-size:13px; font-family:inherit; text-align:center; cursor:pointer;
+  background:linear-gradient(#fff,#eef1f5); color:var(--ink);
+  border:1px solid var(--line); border-radius:var(--r); text-decoration:none}
+.btn:hover{background:linear-gradient(#fff,#e2e7ee)}
+.btn:active{background:#dde3ea}
+.btn-primary{background:var(--accent); color:#fff; border-color:#0f4b93; font-weight:700}
+.btn-primary:hover{background:#1160bb}
+.btn-danger{background:linear-gradient(#fff,#fdeceb); border-color:#e6b3af; color:var(--err)}
+.btn-wide{margin-top:8px}
+.btn-link{line-height:1.4}
+.btn-row{display:flex; gap:8px; flex-wrap:wrap}
+.btn-row .btn{width:auto; min-width:150px}
+
+/* ---------- トースト ---------- */
+.toast{position:fixed; top:52px; left:50%; transform:translateX(-50%);
+  z-index:50; max-width:min(620px,92vw); padding:10px 16px; border-radius:var(--r);
+  background:#233246; color:#fff; box-shadow:0 6px 20px #0003; line-height:1.6;
+  white-space:pre-wrap}
+.toast.warn{background:#8a4b00}
+.toast.error{background:#96201a}
+.toast.info{background:#1c4d80}
+
+/* ---------- 表 ---------- */
+.tbl{width:100%; border-collapse:collapse; font-size:12px; background:#fff}
+.tbl th,.tbl td{border:1px solid var(--line); padding:3px 6px}
+.tbl thead th{background:var(--head); white-space:pre-line; text-align:center;
+  position:sticky; top:0}
+.tbl td.num{text-align:right; font-variant-numeric:tabular-nums}
+.tbl tbody tr:nth-child(even){background:#f7f9fb}
+.tbl tbody tr.hi{background:#fff6d6}
+.scroll{overflow:auto; max-height:70vh; border:1px solid var(--line);
+  border-radius:var(--r); background:#fff}
+.mono{font-family:Consolas,"Courier New",monospace; font-size:11px;
+  white-space:pre-wrap; word-break:break-all}
+
+/* ---------- 帳票 ---------- */
+.report-head{display:flex; justify-content:space-between; align-items:baseline;
+  gap:16px; flex-wrap:wrap; margin-bottom:8px}
+.report-head .ttl{font-weight:700; font-size:15px}
+.report-meta{font-size:11px; color:var(--muted)}
+.blocks{display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:10px}
+.block{border:1px solid var(--line); border-radius:var(--r); background:#fff}
+.block h3{margin:0; padding:4px 8px; background:var(--head); font-size:12px; color:var(--ink)}
+.block table{width:100%; border-collapse:collapse; font-size:12px}
+.block td,.block th{border-top:1px solid var(--line); padding:3px 6px; vertical-align:top}
+.block td.v{text-align:right; width:84px; font-variant-numeric:tabular-nums; white-space:nowrap}
+.block td.f{font-size:10px; color:var(--muted); word-break:break-all}
+.block tr.sum td{font-weight:700; background:#f4f6f9}
+.empty{padding:20px; text-align:center; color:var(--muted)}
+.warnbox{border:1px solid #e5c790; background:#fdf3e0; color:var(--warn);
+  padding:8px 10px; border-radius:var(--r); margin-bottom:10px; line-height:1.6}
+.errbox{border:1px solid #e6b3af; background:#fde8e7; color:var(--err);
+  padding:8px 10px; border-radius:var(--r); margin-bottom:10px; line-height:1.6}
+.okbox{border:1px solid #a9d6bb; background:#e3f2e8; color:var(--ok);
+  padding:8px 10px; border-radius:var(--r); margin-bottom:10px; line-height:1.6}
+
+/* ---------- ラベル台紙 ---------- */
+.labelsheet{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+.lbl{border:1px solid #333; padding:4px 6px; background:#fff; font-size:11px}
+.lbl .bc{font-family:"Libre Barcode 39",Consolas,monospace; font-size:13px;
+  letter-spacing:.04em; border-bottom:1px dotted var(--line); margin-bottom:2px}
+.lbl .row{display:flex; gap:6px}
+.lbl .row .k{width:34px; color:var(--muted)}
+.lbl .row .v{flex:1; font-weight:700}
+.lbl .cellref{font-size:9px; color:#9aa6b2}
+
+/* ---------- 印刷 ---------- */
+@media print{
+  :root{--bg:#fff}
+  body{background:#fff; font-size:10pt}
+  .no-print,.appbar,.appfoot,.toast{display:none !important}
+  .page{padding:0}
+  .card,.block,.scroll{border-color:#000; box-shadow:none; max-height:none}
+  .tbl th,.tbl td,.block td,.block th{border-color:#000}
+  .tbl thead th{position:static; background:#eee !important;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .scroll{overflow:visible}
+  .blocks{grid-template-columns:1fr 1fr}
+  .block{break-inside:avoid}
+  @page{size:A4; margin:8mm}
+  .print-landscape @page{size:A4 landscape}
+}
+.printfoot{display:none}
+@media print{ .printfoot{display:flex; justify-content:space-between;
+  margin-top:6px; font-size:9pt} }
+
+/* ---------- 設定画面 ---------- */
+.setgrid{display:flex; flex-direction:column; gap:0}
+.setrow{display:grid; grid-template-columns:minmax(0,320px) minmax(0,1fr);
+  gap:14px; padding:12px 0; border-bottom:1px solid var(--line-2, #E5EAEE)}
+.setrow:last-child{border-bottom:0}
+@media (max-width:760px){ .setrow{grid-template-columns:1fr; gap:5px} }
+.setlab{display:flex; flex-direction:column; gap:5px; align-items:flex-start;
+  padding-top:5px}
+.setlab label{font-size:13px; color:var(--ink); font-weight:700; cursor:pointer}
+.setctl input[type=text],.setctl input[type=number]{width:100%}
+.setctl input[type=number]{max-width:220px}
+.setctl .hint{margin-top:5px}
+.setctl .err{margin-top:5px; font-size:11.5px; color:var(--err);
+  background:#fde8e7; border:1px solid #e6b3af; border-radius:4px; padding:4px 8px}
+.switch{display:flex; gap:7px; align-items:center; font-size:13px; color:var(--ink);
+  cursor:pointer; padding-top:4px}
+.switch input{width:16px; height:16px; margin:0}
+.layer{display:inline-block; font-size:10px; padding:1px 7px; border-radius:9px;
+  border:1px solid var(--line); color:var(--muted); background:var(--panel);
+  margin-right:4px; white-space:nowrap}
+.layer-local{background:#e3eefa; color:#14508f; border-color:#a9c6e6}
+.layer-app{background:#eef1f5; color:#4a5a6a}
+.layer-env{background:#f0e7fa; color:#5a3a8f; border-color:#c9b3e6}
+.layer-restart{background:#fdf3e0; color:var(--warn); border-color:#e5c790}
+
+/* ==========================================================================
+   ラベル印刷 — mm 絶対配置
+   画面ではプレビュー、印刷では実寸で出す。
+   @page の余白を 0 にして、台紙定義の原点からの mm がそのまま紙に乗るようにする。
+   ========================================================================== */
+.sheet{
+  position:relative; background:#fff; margin:0 auto 10mm;
+  box-shadow:0 2px 10px #0000001f; overflow:hidden;
+  color:#000;
+}
+.sheet-inner{position:absolute; inset:0}
+.label{position:absolute; overflow:hidden}
+.label.guide{outline:.3mm dashed #b0b8c0; outline-offset:0}
+.lf{
+  position:absolute; display:flex; align-items:center;
+  box-sizing:border-box;
+  font-family:"Yu Gothic","游ゴシック",Meiryo,sans-serif;
+  line-height:1; white-space:nowrap; overflow:hidden;
+}
+.lf.bc{display:block; padding:0}
+.lf.bc svg{display:block; width:100%; height:100%}
+.bcerr{font-size:2mm; color:#b3261e}
+.gno{position:absolute; left:1mm; top:1mm; font-size:3mm; font-weight:700; color:#9aa6b2}
+/* 較正シート: 段の境目を全段ぶん引く（段ピッチの確認用） */
+.rowline{position:absolute; left:0; right:0; height:0.2mm; background:#c0392b;
+  opacity:.55; print-color-adjust:exact; -webkit-print-color-adjust:exact}
+.rowlab{position:absolute; right:1.5mm; font-size:2.6mm; color:#c0392b;
+  font-family:Consolas,monospace}
+.label.guide.hdr{border-style:dashed}
+.gxy{position:absolute; right:1mm; bottom:1mm; font-size:2mm; color:#9aa6b2}
+
+/* 較正シートの目盛り */
+.sheet.ruler .tick{position:absolute; background:#c6cdd6}
+.sheet.ruler .tick.h{top:0; width:.2mm; height:4mm}
+.sheet.ruler .tick.v{left:0; height:.2mm; width:4mm}
+.sheet.ruler .tick.big{background:#16202c}
+.sheet.ruler .tick.h.big{height:7mm}
+.sheet.ruler .tick.v.big{width:7mm}
+.sheet.ruler .tlab{position:absolute; font-size:2.4mm; color:#16202c;
+  font-family:Consolas,monospace}
+/* 較正シートの測定線と基準十字（定規を当てる場所） */
+.sheet.ruler .mline{position:absolute; background:#1b64c8;
+  print-color-adjust:exact; -webkit-print-color-adjust:exact}
+.sheet.ruler .mline.h{height:.4mm}
+.sheet.ruler .mline.v{width:.4mm}
+.sheet.ruler .mend{position:absolute; background:#1b64c8;
+  print-color-adjust:exact; -webkit-print-color-adjust:exact}
+.sheet.ruler .mend.v{width:.3mm; height:6mm}
+.sheet.ruler .mend.h{height:.3mm; width:6mm}
+.sheet.ruler .mlab{position:absolute; font-size:2.8mm; color:#1b64c8;
+  font-family:"Yu Gothic","游ゴシック",Meiryo,sans-serif; white-space:nowrap;
+  background:#fff; padding:0 .8mm}
+.sheet.ruler .cross{position:absolute; width:0; height:0}
+.sheet.ruler .cross .cv{position:absolute; left:0; top:-6mm;
+  width:.3mm; height:12mm; background:#c0392b;
+  print-color-adjust:exact; -webkit-print-color-adjust:exact}
+.sheet.ruler .cross .ch{position:absolute; top:0; left:-6mm;
+  height:.3mm; width:12mm; background:#c0392b;
+  print-color-adjust:exact; -webkit-print-color-adjust:exact}
+.sheet.ruler .crosslab{position:absolute; font-size:2.8mm; color:#c0392b;
+  font-family:"Yu Gothic","游ゴシック",Meiryo,sans-serif; white-space:nowrap;
+  background:#fff; padding:0 .8mm}
+.sheet.ruler .edgemark{position:absolute; background:#c0392b; opacity:.45;
+  print-color-adjust:exact; -webkit-print-color-adjust:exact}
+.sheet.ruler .edgemark.h{height:.3mm}
+.sheet.ruler .edgemark.v{width:.3mm}
+.calinfo{position:absolute; left:6mm; bottom:4mm; font-size:2.6mm;
+  color:#16202c; line-height:1.6;
+  font-family:"Yu Gothic","游ゴシック",Meiryo,sans-serif}
+
+/* 配布設定（python-web-tools と同じく、項目を 1 行ずつ・複数列に並べる） */
+.distchecks{border:1px solid var(--line); border-radius:var(--r);
+  padding:8px 12px; margin:10px 0 0; display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(19em, 1fr)); gap:4px 16px}
+.distchecks legend{font-size:12px; color:var(--muted); padding:0 4px}
+.distchecks label{display:flex; align-items:center; gap:6px; min-height:30px;
+  font-size:13px; flex-wrap:wrap; cursor:pointer}
+.distnote{font-size:11px; color:var(--muted)}
+/* この端末で値が入っている項目（＝書き出される）は太く */
+.distchecks label.has{font-weight:700}
+.distchecks label.has .distnote{font-weight:400}
+.pill{display:inline-block; font-size:11px; font-weight:700; padding:1px 9px;
+  border-radius:9px; vertical-align:2px; margin-left:6px}
+.pill.ok{background:#e3f4e8; color:#1b7f3b}
+.pill.warn{background:#fdf3e7; color:#8a5300}
+
+/* 位置合わせ: いまの状態・手順・ずれの入力 */
+.calstate{font-size:15px; margin:4px 0 8px; padding:8px 12px;
+  background:#eef4fb; border:1px solid #cfe0f3; border-radius:var(--r)}
+.calsteps{margin:8px 0 12px; padding-left:22px; line-height:1.9; font-size:14px}
+.calsteps .hint{display:block; margin:0 0 4px}
+.gaprow{display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:15px; margin:6px 0}
+.gaprow select{width:auto; min-width:4.5em; font-size:15px; padding:3px 6px}
+.gaprow input{width:6em; font-size:15px; padding:4px 6px; text-align:right}
+#calStep{width:auto; min-width:7em}
+.calsub{font-size:14px; margin:16px 0 4px; padding-top:10px;
+  border-top:1px solid var(--line)}
+.caldetails summary{cursor:pointer; font-weight:700; padding:2px 0}
+.caldetails[open] summary{margin-bottom:8px}
+
+/* 配布用フォルダ */
+.distopts{display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:8px; font-size:13px}
+.distopts label{display:flex; align-items:center; gap:6px; cursor:pointer}
+.distlog{margin:10px 0 0; padding:10px 12px; background:var(--head, #f1f3f6);
+  border:1px solid var(--line); border-radius:var(--r); font-size:12px;
+  white-space:pre-wrap; word-break:break-all; max-height:260px; overflow:auto}
+
+/* 位置合わせの十字キー */
+.nudgepad{display:grid; grid-template-columns:repeat(3,auto);
+  justify-content:start; gap:6px; margin:10px 0}
+.nudgepad button:nth-child(1){grid-column:2; grid-row:1}
+.nudgepad button:nth-child(2){grid-column:1; grid-row:2}
+.nudgepad button:nth-child(3){grid-column:3; grid-row:2}
+.nudgepad button:nth-child(4){grid-column:2; grid-row:3}
+.nudgepad button{min-width:82px}
+
+/* 合言葉の欄（入力 + 確認ボタン + 結果） */
+.pwrow{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+.pwrow label{font-size:13px; font-weight:700; cursor:pointer}
+.pwrow input{flex:1 1 220px; width:auto; max-width:360px}
+.pwrow .btn{flex:0 0 auto; width:auto; min-width:120px; margin-bottom:0}
+.pwstate{font-size:12px; color:var(--muted); white-space:nowrap}
+.pwstate.ok{color:#1b7f3b; font-weight:700}
+.pwstate.ng{color:#b3261e; font-weight:700}
+
+/* 画面プレビュー時だけ紙の縁を見せる */
+.preview-note{margin-bottom:10px}
+
+/* 計算せずに印刷しようとしたときの注意（印刷はしない） */
+.stalebox{margin-bottom:10px; padding:10px;
+  background:#fdecea; border-color:#e6b3af; color:#8a1c14}
+.stalebox b{color:#b3261e}
+/* 印刷を止めているときに、紙へ理由だけを出す */
+.stopprint{display:none; padding:20mm; font-size:5mm; line-height:1.8;
+  font-family:"Yu Gothic","游ゴシック",Meiryo,sans-serif; color:#000}
+.off{color:var(--muted)}
+/* ハードボードが積み高さより低い理由の注記（解析書 A-1） */
+.note-diff{margin-top:4px; padding:6px 8px; border-radius:3px;
+  background:#eef4fb; color:#1d3c5c; line-height:1.7}
+
+/* バーコードフォント未配置などの警告（印刷はしない） */
+.card.warn{margin-bottom:10px; padding:10px;
+  background:#fdf3e7; border-color:#e6c79f; color:#6b3d00}
+.card.warn code{background:#f6e3c8; padding:0 3px; border-radius:2px}
+
+@media print{
+  @page{ size:A4 portrait; margin:0 }
+  html,body{background:#fff !important; margin:0 !important; padding:0 !important}
+  .sheet{
+    margin:0; box-shadow:none; break-after:page; page-break-after:always;
+  }
+  .sheet:last-child{break-after:auto; page-break-after:auto}
+  .label.guide{outline-color:#888}
+  /* 台紙は実寸が命なので、印刷時に縮小されないよう明示 */
+  .sheet,.label,.lf{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+}
+
+/* ヘッダー帯（用紙幅いっぱい・1段目） */
+.header{position:absolute; overflow:hidden}
+.header.guide{outline:.3mm dashed #b0b8c0}
+.lpad{position:absolute}
+.lpad>.lf{position:absolute}
+
+/* 罫線（線分を矩形として置く。セル枠にすると辺が二重になるため） */
+/* バーコードの白地に隠れないよう、罫線は前に出す */
+.rl{position:absolute; background:#000; z-index:1; print-color-adjust:exact;
+  -webkit-print-color-adjust:exact}
+
+/* バーコードフォントで出す場合（barcode_mode=font） */
+/* .bcwrap は伸縮の基準。scaleX したぶんは中央から左右へ広がるので、
+   はみ出しを切らないよう overflow は .bcfont 側に持たせない */
+.bcwrap{text-align:center; line-height:0}
+.bcfont{white-space:nowrap; letter-spacing:0;
+  text-align:center; color:#000}
+.bctext{text-align:center; font-family:Consolas,monospace; color:#000;
+  line-height:1.1}
+
+/* ---------- 画面の多重起動の防止 ---------- */
+/* 入力できる画面は同時に 1 つだけ。使用権が取れるまで全体を覆う。 */
+.screenguard{position:fixed; inset:0; z-index:200; display:flex;
+  align-items:center; justify-content:center; padding:16px;
+  background:#16202cdd; backdrop-filter:blur(2px)}
+.screenguard-box{background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--r); padding:18px 20px; max-width:560px; width:100%;
+  box-shadow:0 10px 40px #0005}
+.sg-title{font-size:15px; margin:0 0 10px; padding:0; background:none; border:0}
+.sg-ng{color:var(--err)}
+.sg-body{font-size:13px; line-height:1.8; margin:0 0 10px}
+.sg-hint{font-size:12px; color:var(--muted)}
+.sg-btns{display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 6px}
+.sg-btns .btn{width:auto; min-width:150px; margin-bottom:0}
+@media print{ .screenguard{display:none !important} }
+
+/* ---------- 消せるトースト / 参考表示 ---------- */
+.toast{display:flex; align-items:flex-start; gap:10px; cursor:pointer}
+.toast-body{flex:1; white-space:pre-wrap}
+.toast-x{flex:none; background:none; border:0; color:inherit; cursor:pointer;
+  font-size:16px; line-height:1; padding:0 2px; opacity:.75}
+.toast-x:hover{opacity:1}
+.card.dismissable h2{display:flex; align-items:center; justify-content:space-between}
+.card.dismissable h2 .x{background:none; border:0; cursor:pointer; font-size:15px;
+  line-height:1; padding:0 2px; color:var(--muted)}
+.card.dismissable h2 .x:hover{color:var(--ink)}
+
+/* ---------- 起動ページ内のタブ ---------- */
+.nav-sep{display:inline-block; width:1px; height:18px; background:var(--line);
+  margin:0 6px}
+.pane-view{min-height:60vh}
+
+/* ---------- 設定の中のページ切替 / マスタ管理 ---------- */
+.subnav{display:flex; gap:6px; margin-bottom:10px}
+.subtab{padding:6px 16px; font-size:13px; font-family:inherit; cursor:pointer;
+  background:var(--panel); color:var(--ink);
+  border:1px solid var(--line); border-radius:var(--r)}
+.subtab.on{background:var(--accent); color:#fff; border-color:#0f4b93; font-weight:700}
+.masterbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px}
+.masterbar select{width:auto; min-width:220px}
+.masterbar input[type=text]{width:auto; min-width:220px; flex:1}
+.masterbar .btn{width:auto; margin:0}

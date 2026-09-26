@@ -1,0 +1,22 @@
+{% extends "material_base.html" %}
+{% block title %}発注票 — {{ ribbon.display_name }}{% endblock %}
+
+{% block main %}
+<div class="head">
+  <h1>発注票</h1>
+  <p>チェックリストから、リプラ角サイズごとに票を起こします。</p>
+</div>
+
+<div class="btnrow">
+  <button class="btn btn--run" type="button" id="build">発注票を作る</button>
+  <a class="btn btn--print" id="print" target="_blank" rel="noopener" hidden>印刷</a>
+  <button class="btn btn--commit" type="button" id="commit" hidden>発注済みとして記録</button>
+</div>
+
+<div id="note"></div>
+<div id="sheets"></div>
+{% endblock %}
+
+{% block script %}
+<script type="module" src="{{ url_for('material.static', filename='js/views/order.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}｜{{appName}}</title>
+<link rel="stylesheet" href="{{base}}/static/css/app.css">
+</head>
+<!-- 入口(統合版では /pena)と起動トークン。app.js が経路とヘッダに付ける -->
+<body data-base="{{base}}" data-token="{{token}}">
+<header class="appbar no-print">
+  <div class="appbar-title">{{appName}}<span class="appver" title="版 {{version}}／版を切った日 {{build}}／中身の指紋 {{codeStamp}}">v{{version}}<span class="appstamp">{{build}}</span></span></div>
+  <nav class="appbar-nav">
+    <a href="{{base}}/" class="{{navHome}}" data-pane="home">指定サイズ</a>
+    <a href="{{base}}/tare" class="{{navTare}}" data-pane="tare">風袋計算</a>
+    <a href="{{base}}/breakdown" class="{{navBreak}}" data-pane="breakdown">計算内容</a>
+    <a href="{{base}}/labels" class="{{navLabels}}" data-pane="labels">ラベル台紙</a>
+    <span class="nav-sep"></span>
+    <a href="{{base}}/all-size" class="{{navAll}}">全サイズ</a>
+    <a href="{{base}}/settings" class="{{navSettings}}">設定</a>
+  </nav>
+  <div class="appbar-right">
+    <span class="src src-{{materialSource}} {{materialStale}}" title="{{materialSourceHint}}">{{materialSourceLabel}}</span>
+    <span id="conn" class="conn" title="バックエンド接続状態">接続確認中</span>
+  </div>
+</header>
+
+<div id="toast" class="toast no-print" hidden></div>
+
+<!-- 入力画面は同時に 1 つだけ。使用権が取れるまで操作させない。
+     作業状態はサーバー側に 1 組しか無いので、2 枚開くと奪い合う。 -->
+<div id="screenguard" class="screenguard no-print"
+     data-guard="{{screenGuard}}" data-screen="{{screenTitle}}" {{screenGuardHidden}}>
+  <div class="screenguard-box">
+    <div id="sgWait">
+      <h2 class="sg-title">画面を確認しています…</h2>
+      <p class="sg-body">この画面を使ってよいか確認しています。</p>
+    </div>
+    <div id="sgDeny" hidden>
+      <h2 class="sg-title sg-ng">この画面は開けません</h2>
+      <p class="sg-body">
+        <b>{{appName}}</b> は<b>すでに別の画面で開いています</b>（<span id="sgSince">-</span> から）。<br>
+        <span id="sgBg" hidden>その画面は<b>いま裏に回っています</b>（<span id="sgBgSince">-</span> から）。
+        ほかのタブや、最小化したウィンドウを確認してください。<br></span>
+        入力できる画面を 2 つ開くと、どちらの操作も<b>同じ 1 つの作業状態</b>を
+        書き換えてしまい、<b>画面に出ている検査番号と、刷られる検査番号が食い違います</b>。
+      </p>
+      <p class="sg-body sg-hint">
+        先に開いている画面で作業を続けてください。<br>
+        その画面が見当たらない（閉じてしまった・固まった）場合のみ、下のボタンで移せます。
+      </p>
+      <div class="sg-btns">
+        <button type="button" class="btn btn-primary" id="sgTake">この画面で使う</button>
+        <button type="button" class="btn" id="sgRetry">もう一度確認する</button>
+      </div>
+      <p class="sg-body sg-hint">「この画面で使う」を押すと、<b>先に開いている画面は操作できなくなります。</b></p>
+    </div>
+    <div id="sgLost" hidden>
+      <h2 class="sg-title sg-ng">この画面は使用中ではなくなりました</h2>
+      <p class="sg-body">
+        別の画面で「この画面で使う」が押されました。<br>
+        こちらでの操作は反映されません。
+      </p>
+      <div class="sg-btns">
+        <button type="button" class="btn btn-primary" id="sgBack">この画面で使う</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<main class="page">
+{{{content}}}
+</main>
+
+<footer class="appfoot no-print">
+  <span>{{appName}} v{{version}}（{{build}}）</span><span title="動いているファイルの中身から作った指紋。ファイルを差し替えるとこの値が変わる">中身: {{codeStamp}}</span>
+  <span>アプリID: {{appId}}</span>
+  <span>ポート: {{port}}</span>
+  <a href="{{base}}/diag">診断</a>
+</footer>
+
+<script src="{{base}}/static/js/app.js"></script>
+{{{pageScript}}}
+</body>
+</html>

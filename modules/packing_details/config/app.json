@@ -1,0 +1,23 @@
+{
+  "app_id": "nlm.packing-details",
+  "display_name": "コイル梱包明細打ち出しシステム",
+  "version": "0.13.1",
+  "monitor_level": 1,
+
+  "local_dir_name": "PackingDetails",
+
+  "server": {
+    "host": "127.0.0.1",
+    "port_retry": 3,
+    "roles": {
+      "meisai": {
+        "port": 8733
+      }
+    }
+  },
+
+  "monitoring": {
+    "health_poll_seconds": 15,
+    "job_poll_ms": 300
+  }
+}
