@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{base}}/static/css/app.css">
 </head>
 <!-- 入口(統合版では /pena)と起動トークン。app.js が経路とヘッダに付ける -->
-<body data-base="{{base}}" data-token="{{token}}">
+<body data-base="{{base}}" data-token="{{token}}" data-alive-ms="{{aliveMs}}">
 <header class="appbar no-print">
   <div class="appbar-title">{{appName}}<span class="appver" title="版 {{version}}／版を切った日 {{build}}／中身の指紋 {{codeStamp}}">v{{version}}<span class="appstamp">{{build}}</span></span></div>
   <nav class="appbar-nav">

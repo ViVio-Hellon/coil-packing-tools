@@ -340,6 +340,66 @@
     });
   })();
 
+  // ---------------------------------------------------------- 自動終了の心拍(統合版)
+  // 統合アプリは、画面が全部居なくなると自分で終わる(common/idle_exit.py)。
+  // 統合画面の中(iframe)では外枠が心拍を送るので、ここでは送らない。
+  // **別のタブで開いた画面(印刷ビューなど)だけが自分で送る** ── 外枠の
+  // タブを閉じても、開いたままの印刷ビューを使っている間は終わらない
+  // (移植元の「使っている間は止まらない」を引き継ぐ)。
+  // 名乗りは開くたびに新しい名前(タブを複製しても別の画面として数える)。
+  (function () {
+    if (window.top !== window) { return; }        // 統合画面の中
+    var ALIVE_MS = parseInt((document.body && document.body.getAttribute("data-alive-ms")) || "", 10) || 20000;
+    var CLIENT = "pena-" + Date.now().toString(36) + "-" +
+                 Math.random().toString(36).slice(2, 10);
+    function state() { return isVisible() ? "visible" : "hidden"; }
+    function body(extra) {
+      var b = { client: CLIENT, state: state() };
+      Object.keys(extra || {}).forEach(function (k) { b[k] = extra[k]; });
+      return JSON.stringify(b);
+    }
+    // ふつうの心拍
+    function alive(reason) {
+      try {
+        fetch(url("/api/alive"), {
+          method: "POST", cache: "no-store", body: body({ reason: reason }),
+          headers: { "Content-Type": "application/json" }
+        }).catch(function () { /* 届かなければ接続監視が知らせる */ });
+      } catch (e) { /* 同上 */ }
+    }
+    // 閉じる・裏に回る瞬間でも届く送り方
+    function signal(extra) {
+      var text = body(extra);
+      try {
+        if (navigator.sendBeacon &&
+            navigator.sendBeacon(url("/api/alive"), new Blob([text], { type: "application/json" }))) {
+          return;
+        }
+      } catch (e) { /* 下の fetch へ */ }
+      try {
+        fetch(url("/api/alive"), {
+          method: "POST", keepalive: true, body: text,
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (e) { /* 届かなくても次の心拍で直る */ }
+    }
+    alive("open");
+    setInterval(function () { alive("timer"); }, ALIVE_MS);
+    document.addEventListener("visibilitychange", function () {
+      if (isVisible()) { alive("foreground"); } else { signal({ reason: "hidden" }); }
+    });
+    document.addEventListener("freeze", function () { signal({ reason: "freeze" }); });
+    document.addEventListener("resume", function () { alive("resume"); });
+    window.addEventListener("pagehide", function (e) {
+      // 保存状態(bfcache)へ入るだけなら「裏に回った」、本当に閉じたら「閉じた」
+      if (e.persisted) { signal({ reason: "hidden" }); }
+      else { signal({ leaving: true, reason: "close" }); }
+    });
+    window.addEventListener("pageshow", function (e) {
+      if (e.persisted) { alive("restore"); }
+    });
+  })();
+
   // ---------------------------------------------------------- 接続監視
   // 基盤仕様書 2.9: ブラウザーとバックエンドの状態を分けて扱う（監視レベル1）
   var connEl = $("#conn");

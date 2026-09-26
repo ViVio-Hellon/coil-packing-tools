@@ -51,6 +51,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from common import dist_settings as _dist_settings
+
 from . import admin_password, app_config, config, user_settings
 from .logging_utils import get_logger
 
@@ -59,7 +61,7 @@ log = get_logger("distribution")
 # `配布設定\\` の置き場所。**統合版では統合アプリのフォルダの直下
 # `配布設定\\packing_details\\`**(機能ごとに分ける。設定の鍵が機能ごとに違うため)
 DIR = Path(os.environ.get("PACKING_DETAILS_DISTRIBUTION_DIR",
-                          str(config.BASE_DIR.parent.parent / "配布設定" / "packing_details")))
+                          str(_dist_settings.default_dir("packing_details"))))
 SETTINGS_NAME = "設定.json"
 README_NAME = "はじめに読む.txt"
 
@@ -266,8 +268,8 @@ def export(password: str, items: list[str]) -> Result:
     _mark_applied()
 
     names = [ITEM_LABELS[k] for k in settings]
-    message = (f"配布設定を書き出しました（{len(names)}項目）。アプリのフォルダの直下の"
-               f"「{DIR.name}」フォルダに入っています。アプリのフォルダごと配ってください。")
+    message = (f"配布設定を書き出しました（{len(names)}項目）。アプリのフォルダの"
+               f"「{_dist_settings.where(DIR)}」に入っています。アプリのフォルダごと配ってください。")
     if defaults:
         message += (" 既定のままなので入れていないもの（配った先も既定で動きます）: "
                     + "・".join(defaults) + "。")

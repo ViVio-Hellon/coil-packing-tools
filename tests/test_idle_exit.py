@@ -98,6 +98,120 @@ class IdleWatchTest(unittest.TestCase):
         self.assertEqual(idle_exit.SUSPEND_SEC, idle_exit.WAKE_GAP_SEC)
 
 
+class ScreensTest(unittest.TestCase):
+    """画面ごとに数える(統合版)。
+
+    ペナラベルの印刷ビューは別のタブで開く。1つだけで持つと、どちらかの
+    タブを閉じた合図で、開いている他方ごと終わってしまう。
+    """
+
+    @staticmethod
+    def _close(watch, client: str) -> None:
+        watch.leaving(client)
+        watch._screens[client].leaving_at = time.monotonic() - 9
+
+    def test_外枠を閉じても別タブの画面が開いていれば終わらない(self):
+        watch = _watch()
+        watch.beat(hidden=False, client="shell-1")
+        watch.beat(hidden=False, client="pena-1")
+        self._close(watch, "shell-1")
+        self.assertIsNone(watch.overdue())
+        self.assertNotIn("shell-1", watch.screens(), "閉じた画面は忘れる")
+        self.assertIn("pena-1", watch.screens())
+
+    def test_全部閉じたら終わる(self):
+        watch = _watch()
+        watch.beat(hidden=False, client="shell-1")
+        watch.beat(hidden=False, client="pena-1")
+        self._close(watch, "shell-1")
+        self.assertIsNone(watch.overdue())
+        self._close(watch, "pena-1")
+        self.assertEqual(watch.overdue(), "画面が閉じられました")
+
+    def test_別タブを閉じても外枠は巻き添えにならない(self):
+        watch = _watch()
+        watch.beat(hidden=False, client="shell-1")
+        watch.beat(hidden=False, client="pena-1")
+        self._close(watch, "pena-1")
+        self.assertIsNone(watch.overdue())
+
+    def test_裏に回った画面は心拍が止まっても生きている(self):
+        """印刷ビューを前に出すと、外枠は裏に回る。外枠を閉じずに放置しても終わらない。"""
+        watch = _watch()
+        watch.beat(hidden=True, client="shell-1")
+        watch.beat(hidden=False, client="pena-1")
+        watch._screens["shell-1"].seen = time.monotonic() - 8 * 3600
+        self._close(watch, "pena-1")
+        self.assertIsNone(watch.overdue())
+
+    def test_心拍が途切れた画面だけ見送る(self):
+        watch = _watch()
+        watch.beat(hidden=False, client="shell-1")
+        watch.beat(hidden=False, client="pena-1")
+        watch._screens["pena-1"].seen = time.monotonic() - 91
+        self.assertIsNone(watch.overdue())
+        self.assertNotIn("pena-1", watch.screens())
+        watch._screens["shell-1"].seen = time.monotonic() - 91
+        self.assertIn("心拍がありません", watch.overdue() or "")
+
+    def test_名乗らない画面と名乗った画面は別に数える(self):
+        """梱包明細・資材計算の画面(名乗らない)を閉じても、外枠が開いていれば終わらない。"""
+        watch = _watch()
+        watch.beat(hidden=False)                     # 名乗らない(移植元の画面)
+        watch.beat(hidden=False, client="shell-1")
+        watch.leaving()
+        watch._leaving_at = time.monotonic() - 9
+        self.assertIsNone(watch.overdue())
+
+    def test_知らない名前の閉じた合図は無視する(self):
+        watch = _watch()
+        watch.beat(hidden=False, client="shell-1")
+        watch.leaving("pena-unknown")
+        self.assertNotIn("pena-unknown", watch.screens())
+        self.assertIsNone(watch.overdue())
+
+    def test_スリープから戻ったらどの画面も数え直す(self):
+        watch = _watch()
+        watch.beat(hidden=False, client="shell-1")
+        watch.beat(hidden=False, client="pena-1")
+        for s in watch._screens.values():
+            s.seen = time.monotonic() - 91
+        watch.leaving("pena-1")
+        mono = time.monotonic()
+        watch.check_wake(wall=1000.0, mono=mono)
+        self.assertGreater(watch.check_wake(wall=1000.0 + 600, mono=mono), 0)
+        self.assertIsNone(watch.overdue())
+        self.assertFalse(watch.screens()["pena-1"]["leaving"])
+
+    def test_名乗りは長さと文字を絞る(self):
+        watch = _watch()
+        watch.beat(hidden=False, client="pena-<script>" + "x" * 200)
+        (name,) = watch.screens()
+        self.assertNotIn("<", name)
+        self.assertLessEqual(len(name), 64)
+
+    def test_覚える画面の数には上限がある(self):
+        """閉じた合図が届かなかった画面が溜まり続けない。"""
+        watch = _watch()
+        for i in range(idle_exit.MAX_SCREENS + 10):
+            watch.beat(hidden=True, client=f"pena-{i}")
+        self.assertLessEqual(len(watch.screens()), idle_exit.MAX_SCREENS)
+        self.assertIn(f"pena-{idle_exit.MAX_SCREENS + 9}", watch.screens(), "新しい画面を忘れた")
+
+    def test_合図の取り次ぎ(self):
+        idle_exit.reset()
+        self.addCleanup(idle_exit.reset)
+        self.assertFalse(idle_exit.signal(client="pena-1"), "見張りが無ければ False")
+        watch = _watch()
+        idle_exit._watch = watch
+        self.assertTrue(idle_exit.signal(client="pena-1", hidden=False))
+        self.assertTrue(idle_exit.signal(client="pena-1", leaving=True))
+        self.assertTrue(watch.screens()["pena-1"]["leaving"])
+        # 「裏に回った」は閉じた合図を取り消さない
+        idle_exit.signal(client="pena-1", hidden=True)
+        self.assertTrue(watch.screens()["pena-1"]["leaving"])
+
+
 class SingletonTest(unittest.TestCase):
     """見張りはプロセスに1つ。3機能の `idle_exit` は同じもの。"""
 

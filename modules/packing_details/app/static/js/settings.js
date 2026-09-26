@@ -432,7 +432,7 @@ function renderDist(d) {
     ? `${d.created_at} に ${d.created_on} で作成`
       + (d.applied_at ? `（この端末で最後に書き出した・読み込んだ: ${d.applied_at}）` : "")
       + (skipped.length ? `\n※ 形が違うので読まない項目: ${skipped.join(" / ")}` : "")
-    : (d.problem || "まだありません。下で書き出すと、アプリのフォルダの直下に「配布設定」フォルダができます。");
+    : (d.problem || "まだありません。下で書き出すと、アプリのフォルダの「配布設定\\packing_details」にできます。");
   $("distMeta").classList.toggle("bad", Boolean(d.problem || skipped.length));
   const rows = d.contents.length ? d.contents : [{ label: "（なし）", value: "" }];
   $("distRows").replaceChildren(...rows.map((c) => {

@@ -17,8 +17,16 @@ r"""配布用フォルダを作る（``ViVio-Hellon/python-web-tools`` の ``scr
     *.log / logs\                         … その端末の記録
 
 ここは **配るものだけ** を新しいフォルダへ写す。設定も一緒に配りたいときは、
-先に設定画面の「配布設定」で書き出しておく（アプリの直下の ``配布設定\``。
-配った先が起動時に読み込む）。
+先に各機能の設定画面の「配布設定」で書き出しておく（アプリの直下の
+``配布設定\<機能>\``。配った先が起動時に読み込む）。
+
+【統合版: 配布設定は3機能ぶんまとめて】
+梱包明細・ペナラベル・資材計算の配布設定を、書き出してあるものは全部入れる。
+入れないと決めたとき（``with_settings=False``）は**どれも入れない**。
+値は機能ごとに分けたまま（``配布設定\packing_details\`` など。
+``common/dist_settings.py``）。機能のフォルダの中に古い置き場所の
+``配布設定\`` が残っていても、それは写さない（入れる・入れないの選択が
+効かなくなるため）。
 
 python-web-tools との違い
     * 端末ごとの設定・作業状態は ``%LOCALAPPDATA%\PackingPenaLabel`` にあり、
@@ -33,6 +41,7 @@ from __future__ import annotations
 
 import datetime as dt
 import fnmatch
+import importlib
 import json
 import logging
 import os
@@ -43,6 +52,7 @@ from typing import List, Optional, Tuple
 
 from ..config import APP_BUILD, ROOT_DIR, code_stamp
 from common import app_config as _integrated
+from common import dist_settings as _dist_settings
 
 log = logging.getLogger(__name__)
 
@@ -80,9 +90,9 @@ EXCLUDE_NAMES: Tuple[str, ...] = (
     "tests", "tools", "*.db", "*.db-wal", "*.db-shm", "user_config.json",
 )
 
-#: 配布設定のフォルダ（``services/distribution.py`` の置き場所と同じ名前）。
+#: 配布設定のフォルダ（``common/dist_settings.py`` の決まり。中は機能ごと）。
 #: **INCLUDE には入れない** ── 入れるかどうかは with_settings で決める
-SETTINGS = "配布設定"
+SETTINGS = _dist_settings.ROOT_NAME
 
 #: できたフォルダに **入っていてはいけない** もの（最後に確かめる）
 FORBIDDEN: Tuple[str, ...] = ("tests", "tools", ".git", "config/local.json")
@@ -120,6 +130,17 @@ def _ignore(directory: str, names: List[str]) -> set:
     return {n for n in names if _excluded(n)}
 
 
+def _stray_settings(name: str) -> bool:
+    """配るものの中に紛れた配布設定（古い置き場所・書き出しの途中）。"""
+    return name == SETTINGS or name.startswith(SETTINGS + ".")
+
+
+def _ignore_app(directory: str, names: List[str]) -> set:
+    """アプリ本体を写すとき。配布設定は **選んだときだけ、決まった場所へ** 入れるので、
+    機能のフォルダの中に残っている ``配布設定\\`` は写さない。"""
+    return {n for n in names if _excluded(n) or _stray_settings(n)}
+
+
 def _inside(path: Path, parent: Path) -> bool:
     try:
         path.resolve().relative_to(parent.resolve())
@@ -128,10 +149,19 @@ def _inside(path: Path, parent: Path) -> bool:
     return True
 
 
-def _settings_lines(folder: Path) -> List[str]:
+def _label_of(module, key: str) -> str:
+    """設定の項目の呼び名（機能ごとの一覧から）。"""
+    item_label = getattr(module, "item_label", None)
+    if callable(item_label):
+        return item_label(key)
+    return (getattr(module, "ITEM_LABELS", None) or {}).get(key, key)
+
+
+def _settings_lines(folder: Path, module=None) -> List[str]:
     """配布設定の中身を、メモと画面に出す形で。"""
-    from . import distribution as D
-    path = folder / D.SETTINGS_NAME
+    if module is None:
+        from . import distribution as module
+    path = folder / module.SETTINGS_NAME
     if not path.is_file():
         return ["  （設定.json がありません）"]
     try:
@@ -141,11 +171,27 @@ def _settings_lines(folder: Path) -> List[str]:
     lines = []
     for key, value in (data.get("settings") or {}).items():
         shown = ("する" if value else "しない") if isinstance(value, bool) else value
-        lines.append("  %s: %s" % (D.item_label(key), shown))
+        lines.append("  %s: %s" % (_label_of(module, key), shown))
     if data.get("created_at"):
         lines.append("  （作成 %s / %s）" % (data.get("created_at"),
                                             data.get("created_on", "")))
     return lines or ["  （中身がありません）"]
+
+
+def _settings_sources(src_root: Path, root: Optional[Path]) -> list:
+    """3機能の配布設定のうち、書き出してあるもの: ``[(機能, 呼び名, 置き場所, モジュール)]``。
+
+    読むのは **各機能が書き出した場所そのもの**（各機能の ``distribution.DIR``）。
+    名前で探すと、置き場所を変えている場合に「書き出したのに入らない」になる。
+    ``root`` を渡したとき（試験・写しから作るとき）は、その下の決まった場所。
+    """
+    found = []
+    for key, label, modname in _dist_settings.MODULES:
+        module = importlib.import_module(modname)
+        src = Path(module.DIR) if root is None else src_root / SETTINGS / key
+        if src.is_dir() and (src / module.SETTINGS_NAME).is_file():
+            found.append((key, label, src, module))
+    return found
 
 
 def build(out: Optional[Path] = None, *, with_settings: bool = True,
@@ -183,7 +229,7 @@ def build(out: Optional[Path] = None, *, with_settings: bool = True,
                     missing.append(name)
                 continue
             if src.is_dir():
-                shutil.copytree(str(src), str(out / name), ignore=_ignore,
+                shutil.copytree(str(src), str(out / name), ignore=_ignore_app,
                                 dirs_exist_ok=True)
             else:
                 shutil.copy2(str(src), str(out / name))
@@ -198,31 +244,38 @@ def build(out: Optional[Path] = None, *, with_settings: bool = True,
             lines.append("同梱の Python（runtime フォルダ）はありません。"
                          "配った先に Python が要ります。")
 
-        # 配布設定: 入れる/入れないをはっきり決める。
-        # 読むのは **書き出した場所そのもの**（distribution.DIR）。名前で
-        # 探すと、置き場所を変えている場合に「書き出したのに入らない」になる。
-        # 配った先ではアプリ直下の 配布設定\ を読むので、入れる先は既定の名前。
-        if root is None:
-            from . import distribution as D
-            settings_src = Path(D.DIR)
-        else:
-            settings_src = src_root / SETTINGS
+        # 配布設定: 入れる/入れないをはっきり決める。**3機能ぶんまとめて**。
+        # 配った先では各機能が 配布設定\<機能>\ を読むので、入れる先は決まった名前。
+        found = _settings_sources(src_root, root)
         included = False
-        if with_settings and settings_src.is_dir():
-            shutil.copytree(str(settings_src), str(out / SETTINGS), ignore=_ignore)
-            included = True
+        if with_settings and found:
             lines.append("%s フォルダを入れました（配った先が起動時に読み込みます）:"
                          % SETTINGS)
-            lines += _settings_lines(out / SETTINGS)
+            for key, label, src, module in found:
+                dest = out / SETTINGS / key
+                shutil.copytree(str(src), str(dest), ignore=_ignore)
+                lines.append("  [%s] %s\\%s" % (label, SETTINGS, key))
+                lines += ["  " + ln for ln in _settings_lines(dest, module)]
+            have = {key for key, _, _, _ in found}
+            rest = [label for key, label, _ in _dist_settings.MODULES if key not in have]
+            if rest:
+                lines.append("  書き出していない機能: %s（配った先で 1 台ずつ設定します）"
+                             % "・".join(rest))
+            included = True
         else:
             lines.append("配布設定は入れていません。配った先で 1 台ずつ"
-                         "設定画面から参照先を設定してください。")
+                         "各機能の設定画面から設定してください。")
             if with_settings:
-                lines.append("  （設定画面の「配布設定」で書き出すと、次からは一緒に配れます）")
+                lines.append("  （各機能の設定画面の「配布設定」で書き出すと、次からは一緒に配れます）")
 
         # 入っていてはいけないものが無いか、最後に確かめる
         leaked = [p for p in FORBIDDEN if (out / p).exists()]
         leaked += [str(p.relative_to(out)) for p in out.rglob("*") if _excluded(p.name)]
+        # 配布設定は決まった場所（直下の 配布設定\）だけ。選ばなければそれも無い
+        leaked += [str(p.relative_to(out)) for p in out.rglob("*")
+                   if _stray_settings(p.name) and p != out / SETTINGS]
+        if not included and (out / SETTINGS).exists():
+            leaked.append(SETTINGS)
         if leaked:
             raise BuildRefused("配ってはいけないものが入ったため、作るのをやめました: "
                                + ", ".join(sorted(set(leaked))))

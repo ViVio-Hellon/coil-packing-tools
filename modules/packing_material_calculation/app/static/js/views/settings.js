@@ -247,7 +247,7 @@ function renderDistribution(d) {
   state.className = `st st--${d.exists ? 'ok' : 'warn'}`;
   text($('#distMeta'), d.exists
     ? `${d.created_at} に ${d.created_on} で作成`
-    : 'まだありません。下で書き出すと、ツールのフォルダの直下に「配布設定」フォルダができます。');
+    : 'まだありません。下で書き出すと、ツールのフォルダの「配布設定\\packing_material_calculation」にできます。');
   $('#distRows').innerHTML = d.contents.length
     ? d.contents.map(c =>
         `<tr><td>${esc(c.label)}</td><td>${esc(c.value)}</td></tr>`).join('')

@@ -48,6 +48,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from common import dist_settings as _dist_settings
+
 from . import admin_password, config, user_settings
 from .sqlite_toolkit import now_db_string
 from .logging_utils import get_logger
@@ -57,7 +59,7 @@ log = get_logger("distribution")
 # `配布設定\\` の置き場所。**統合版では統合アプリのフォルダの直下
 # `配布設定\\packing_material_calculation\\`**(機能ごとに分ける。設定の鍵が機能ごとに違うため)
 DIR = Path(os.environ.get("COIL_TOOL_DISTRIBUTION_DIR",
-                          str(config.BASE_DIR.parent.parent / "配布設定" / "packing_material_calculation")))
+                          str(_dist_settings.default_dir("packing_material_calculation"))))
 SETTINGS_NAME = "設定.json"
 README_NAME = "はじめに読む.txt"
 
@@ -230,8 +232,8 @@ def export(items: list[str]) -> Result:
     _mark_applied()
 
     names = [ITEM_LABELS[k] for k in settings]
-    message = (f"配布設定を書き出しました({len(names)}項目)。ツールの直下の「{DIR.name}」"
-               "フォルダに入っています。ツールのフォルダごと配ってください"
+    message = (f"配布設定を書き出しました({len(names)}項目)。ツールのフォルダの"
+               f"「{_dist_settings.where(DIR)}」に入っています。ツールのフォルダごと配ってください"
                "(このフォルダも一緒に入ります)。")
     if defaults:
         message += (" 既定のままなので入れていないもの(配った先も既定で動きます): "

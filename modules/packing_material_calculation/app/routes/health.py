@@ -99,7 +99,14 @@ def alive():
     if watch is not None:
         # 閉じた合図は猶予つき。**再読込でも `pagehide` は飛ぶ**ので、
         # 戻ってくれば次の心拍で取り消される
-        watch.leaving() if closing else watch.beat(hidden=hidden)
+        # 【統合版】「裏に回った」合図は閉じた合図を取り消さない(`keep_leaving`)。
+        # タブを閉じると両方が別々の便で届き、届く順は決まっていない。統合画面の
+        # 中(iframe)では「閉じた」→「裏に回った」の順で届くことがあり(実ブラウザで
+        # 確認)、取り消すと閉じたのに終わらない。梱包明細の受け口と同じ決まり
+        if closing:
+            watch.leaving()
+        else:
+            watch.beat(hidden=hidden, keep_leaving=hidden is True)
 
     if closing:
         # 閉じたなら符牒を返す。**自分が持っているときだけ**手放すので、

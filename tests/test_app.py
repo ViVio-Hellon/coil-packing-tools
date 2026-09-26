@@ -290,6 +290,48 @@ class AliveAndShutdownTest(unittest.TestCase):
         self.client.post("/material/api/alive", json={"hidden": False})
         self.assertIsNotNone(self.watch._seen)
 
+    def test_外枠を閉じてもペナラベルの別タブが開いていれば終わらない(self):
+        """ペナラベルの移植元は「使っている間は止まらない」作り。印刷ビューは別タブで開く。"""
+        self.client.post("/api/alive", json={"state": "visible", "client": "shell-a"})
+        # 別タブの印刷ビュー。sendBeacon で届くのでトークンは付かない
+        res = self.client.post("/pena/api/alive", json={"state": "visible", "client": "pena-a",
+                                                        "reason": "open"})
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.get_json()["watching"])
+        self.client.post("/api/alive", json={"leaving": True, "client": "shell-a"})
+        self.watch._screens["shell-a"].leaving_at = time.monotonic() - 9
+        self.assertIsNone(self.watch.overdue(), "開いている印刷ビューごと終わった")
+        # 印刷ビューも閉じたら終わる
+        self.client.post("/pena/api/alive", json={"leaving": True, "client": "pena-a"})
+        self.watch._screens["pena-a"].leaving_at = time.monotonic() - 9
+        self.assertEqual(self.watch.overdue(), "画面が閉じられました")
+
+    def test_ペナラベルの心拍もよそのページからは受けない(self):
+        res = self.client.post("/pena/api/alive", json={"client": "pena-x"},
+                               headers={"Sec-Fetch-Site": "cross-site"})
+        self.assertEqual(res.status_code, 403)
+        self.assertNotIn("pena-x", self.watch.screens())
+
+    def test_ペナラベルの画面は心拍の間隔を受け取る(self):
+        html = self.client.get(f"/pena/?t={TOKEN}").get_data(as_text=True)
+        self.assertIn(f'data-alive-ms="{idle_exit.HEARTBEAT_MS}"', html)
+
+    def test_資材計算の画面も裏に回った合図で閉じた合図を取り消さない(self):
+        """統合画面を閉じると、中の資材計算から「閉じた」「裏に回った」が順不同で届く。"""
+        self.client.post("/material/api/alive", json={"hidden": False})
+        self.client.post("/material/api/alive", json={"closing": True, "screen": "m-1"})
+        self.client.post("/material/api/alive", json={"hidden": True})
+        self.assertIsNotNone(self.watch._leaving_at, "裏に回った合図で閉じた合図を取り消した")
+        self.watch._leaving_at = time.monotonic() - 9
+        self.assertEqual(self.watch.overdue(), "画面が閉じられました")
+
+    def test_資材計算の画面はふつうの心拍なら閉じた合図を取り消す(self):
+        """再読込: 閉じた合図のあとに前の画面の心拍が来たら、終わらない。"""
+        self.client.post("/material/api/alive", json={"hidden": False})
+        self.client.post("/material/api/alive", json={"closing": True, "screen": "m-1"})
+        self.client.post("/material/api/alive", json={"hidden": False})
+        self.assertIsNone(self.watch._leaving_at)
+
     def test_停止はトークン必須(self):
         self.assertEqual(self.client.post("/api/shutdown", json={}).status_code, 401)
 

@@ -186,6 +186,84 @@ def main(argv=None) -> int:
     logs = list((local / "logs").glob("coil_packing_tools_*.log"))
     check("ログが1つのファイルに集まる", len(logs) == 1 and all(k in logs[0].read_text(encoding="utf-8") for k in ("meisai", "coil_tool", "packing_pena_label")), str([l.name for l in logs]))
 
+    if not no_browser:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            sync_playwright = None
+        if sync_playwright is not None:
+            print("■ 自動終了: 外枠を閉じても、ペナラベルの別タブが開いていれば終わらない")
+            # 止めた直後は前のポートがまだ空かないことがある(試験の都合)。別の番号で立てる
+            with socket.socket() as s2:
+                s2.bind(("127.0.0.1", 0)); port = s2.getsockname()[1]
+            data = json.loads(conf.read_text(encoding="utf-8"))
+            data["server"]["roles"]["main"]["port"] = port
+            conf.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            base = "http://127.0.0.1:%d" % port
+            proc2 = subprocess.Popen([sys.executable, str(ROOT / "start_app.py"), "--no-browser"],
+                                     cwd=str(home), env=env, stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT, text=True)
+            ready = False
+            for _ in range(300):
+                try:
+                    _, body = get("/api/health")
+                    if json.loads(body).get("ready"):
+                        ready = True; break
+                except Exception:
+                    pass
+                time.sleep(0.3)
+            if not ready and proc2.poll() is not None:
+                print(proc2.communicate(timeout=10)[0][-1500:])
+            check("もう一度起動できる", ready)
+            if not ready:
+                proc2.kill(); proc2.communicate(timeout=10)
+                sync_playwright = None
+        if sync_playwright is not None:
+            token2 = json.loads((local / "runtime" / "main.lock").read_text(encoding="utf-8"))["token"]
+            # 猶予(8秒)+見張りの刻み(2秒)を越えて待つ
+            settle = 14
+            with sync_playwright() as pw:
+                exe = os.environ.get("PLAYWRIGHT_CHROMIUM", "/opt/pw-browsers/chromium")
+                br = pw.chromium.launch(executable_path=exe if os.path.exists(exe) else None)
+                ctx = br.new_context(viewport={"width": 1366, "height": 900})
+                shell = ctx.new_page()
+                shell.goto(base + "/?t=" + token2); shell.wait_for_timeout(2500)
+                pena_beats = []
+                ctx.on("request", lambda r: pena_beats.append(r.post_data or "")
+                       if r.url.endswith("/pena/api/alive") else None)
+                sheet = ctx.new_page()             # 印刷ビュー(ふだんは別タブで開く)
+                sheet.goto(base + "/pena/tare/print"); sheet.wait_for_timeout(1500)
+                check("別タブのペナラベルが自分の名乗りで心拍を送る",
+                      any('"client": "pena-' in b or '"client":"pena-' in b for b in pena_beats),
+                      "%d 回" % len(pena_beats))
+                in_frame = shell.frame(name="cpt-pena")
+                check("統合画面の中のペナラベルは送らない(外枠が送る)",
+                      in_frame is not None and in_frame.evaluate("()=>window.top!==window"))
+                shell.close(run_before_unload=True)
+                time.sleep(settle)
+                check("外枠を閉じても、印刷ビューが開いていれば終わらない", proc2.poll() is None)
+                st, _ = get("/api/health")
+                check("印刷ビューはまだサーバに届く", st == 200)
+                sheet.close(run_before_unload=True)
+                try:
+                    proc2.wait(timeout=settle + 10); ended = True
+                except subprocess.TimeoutExpired:
+                    ended = False
+                check("印刷ビューも閉じたら自分で終わる", ended)
+                br.close()
+            if proc2.poll() is None:
+                subprocess.run([sys.executable, str(ROOT / "process_manager.py")], cwd=str(home),
+                               env=env, capture_output=True, text=True, timeout=60)
+                try:
+                    proc2.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    proc2.kill()
+            proc2.communicate(timeout=10)
+            log_text = "".join(p.read_text(encoding="utf-8") for p in (local / "logs").glob("*.log"))
+            check("ログに「ほかに開いている画面がある」と残る", "ほかに" in log_text and "終了しません" in log_text)
+            check("ログに閉じられたので終了したと残る", "誰も見ていないので終了します(画面が閉じられました)" in log_text)
+            check("自動終了でもロックが消える", not (local / "runtime" / "main.lock").exists())
+
     print("=" * 76)
     ng = [r for r in results if not r[1]]
     print("結果: %d 項目中 %d 件 NG" % (len(results), len(ng)))

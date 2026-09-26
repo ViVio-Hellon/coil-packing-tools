@@ -12,7 +12,8 @@
 
 【流れ】
     1. 1 台で起動して設定し、設定画面の「配布設定」で書き出す
-    2. アプリのフォルダーの直下に ``配布設定\\`` ができ、配るものが全部そこに入る
+    2. アプリのフォルダーの直下に ``配布設定\\packing_pena_label\\`` ができ、
+       配るものが全部そこに入る（統合版。3機能とも ``配布設定\\<機能>\\``）
     3. アプリのフォルダーごと配る
     4. 配った先は起動したとき ``配布設定\\`` を見つけて読み込む
 
@@ -49,14 +50,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..config import ROOT_DIR, Config, load_local_overrides, save_local_overrides
+from common import dist_settings as _dist_settings
+from ..config import Config, load_local_overrides, save_local_overrides
 from . import settings as S
 
 log = logging.getLogger(__name__)
 
-#: ``配布設定\\`` の置き場所（アプリのフォルダーの直下）
+#: ``配布設定\\`` の置き場所。**統合版では統合アプリのフォルダの直下
+#: ``配布設定\\packing_pena_label\\``**（梱包明細・資材計算と同じ決まり。
+#: 設定の項目が機能ごとに違うので、機能ごとに分ける。common/dist_settings.py）
 DIR = Path(os.environ.get("PACKING_PENA_DISTRIBUTION_DIR",
-                          os.path.join(ROOT_DIR, "配布設定")))
+                          str(_dist_settings.default_dir("packing_pena_label"))))
 SETTINGS_NAME = "設定.json"
 README_NAME = "はじめに読む.txt"
 #: この端末が最後に読み込んだとき（設定画面に出すだけ）
@@ -273,9 +277,9 @@ def export(password: str, keys: List[str], cfg: Config) -> Result:
     _mark_applied(cfg)
 
     names = [item_label(k) for k in settings]
-    message = ("配布設定を書き出しました（%d 項目）。アプリのフォルダーの直下の"
-               "「%s」フォルダーに入っています。アプリのフォルダーごと配ってください。"
-               % (len(names), DIR.name))
+    message = ("配布設定を書き出しました（%d 項目）。アプリのフォルダーの"
+               "「%s」に入っています。アプリのフォルダーごと配ってください。"
+               % (len(names), _dist_settings.where(DIR)))
     if defaults:
         # 全部並べると長すぎて読まれないので、多いときは数で言う
         shown = "・".join(defaults[:3]) + (

@@ -20,6 +20,10 @@ ROOT = Path(__file__).resolve().parent.parent.parent.parent
 MODULE = "modules/packing_pena_label"
 from modules.packing_pena_label.app.services import dist_folder as DF          # noqa: E402
 from modules.packing_pena_label.app.services import distribution as D          # noqa: E402
+from common import dist_settings                                                # noqa: E402
+
+#: 統合版: 配布設定は 配布設定\<機能>\ に機能ごとに置く(common/dist_settings.py)
+PENA = "packing_pena_label"
 
 
 def fake_app(base: Path) -> Path:
@@ -105,8 +109,8 @@ class DistFolderTest(unittest.TestCase):
         self.assertIn("%LOCALAPPDATA%", text, "入れ替えで写すものが無いことを書く")
 
     def test_settings_go_in_only_when_asked(self):
-        d = self.src / DF.SETTINGS
-        d.mkdir()
+        d = self.src / DF.SETTINGS / PENA
+        d.mkdir(parents=True)
         (d / D.SETTINGS_NAME).write_text(json.dumps({
             "format": 1, "created_at": "2026-09-26 08:00:00", "created_on": "PC1",
             "settings": {"label_offset_x_mm": 2.5}}, ensure_ascii=False),
@@ -115,7 +119,7 @@ class DistFolderTest(unittest.TestCase):
         self.assertFalse((self.out / DF.SETTINGS).exists())
         self.assertFalse(r.with_settings)
         r = self.build(with_settings=True, force=True)
-        self.assertTrue((self.out / DF.SETTINGS / D.SETTINGS_NAME).exists())
+        self.assertTrue((self.out / DF.SETTINGS / PENA / D.SETTINGS_NAME).exists())
         self.assertTrue(r.with_settings)
         self.assertTrue(any("印刷位置の補正 X" in ln for ln in r.lines))
         memo = (self.out / DF.MEMO_NAME).read_text(encoding="utf-8-sig")
@@ -130,8 +134,82 @@ class DistFolderTest(unittest.TestCase):
         with mock.patch.object(D, "DIR", elsewhere):
             r = DF.build(self.out)               # root を渡さない＝本番と同じ経路
         self.assertTrue(r.with_settings)
-        self.assertTrue((self.out / DF.SETTINGS / D.SETTINGS_NAME).exists(),
-                        "配った先が読む名前（配布設定）で入れる")
+        self.assertTrue((self.out / DF.SETTINGS / PENA / D.SETTINGS_NAME).exists(),
+                        "配った先が読む名前（配布設定\\packing_pena_label）で入れる")
+
+    # ---- 統合版: 3機能の配布設定 ---------------------------------------
+    def _export(self, key: str, settings: dict) -> None:
+        d = self.src / DF.SETTINGS / key
+        d.mkdir(parents=True, exist_ok=True)
+        (d / D.SETTINGS_NAME).write_text(json.dumps({
+            "format": 1, "created_at": "2026-09-26 08:00:00", "created_on": "PC1",
+            "settings": settings}, ensure_ascii=False), encoding="utf-8")
+        (d / D.README_NAME).write_text("x", encoding="utf-8")
+
+    def _export_all(self) -> None:
+        self._export("packing_details", {"export_dir": "D:\\出力"})
+        self._export(PENA, {"label_offset_x_mm": 2.5})
+        self._export("packing_material_calculation", {"auto_import": True})
+
+    def _stale_in_module(self) -> Path:
+        """移植したときの古い置き場所(機能のフォルダの中)に残った配布設定。"""
+        stale = self.src / MODULE / DF.SETTINGS
+        stale.mkdir(parents=True, exist_ok=True)
+        (stale / D.SETTINGS_NAME).write_text("{}", encoding="utf-8")
+        return stale
+
+    def test_all_three_modules_settings_go_in(self):
+        """梱包明細・ペナラベル・資材計算の配布設定がまとめて入る。"""
+        self._export_all()
+        r = self.build()
+        self.assertTrue(r.with_settings)
+        for key, label, _ in dist_settings.MODULES:
+            self.assertTrue((self.out / DF.SETTINGS / key / D.SETTINGS_NAME).exists(), key)
+            self.assertTrue(any(label in ln for ln in r.lines), label)
+        memo = (self.out / DF.MEMO_NAME).read_text(encoding="utf-8-sig")
+        self.assertIn("配布設定\\packing_details", memo)
+        self.assertIn("印刷位置の補正 X（mm）: 2.5", memo)
+        self.assertNotIn("書き出していない機能", memo)
+
+    def test_no_settings_means_none_at_all(self):
+        """「入れない」を選んだら、どの機能の配布設定も入らない(古い置き場所の分も)。"""
+        self._export_all()
+        self._stale_in_module()
+        r = self.build(with_settings=False)
+        self.assertFalse(r.with_settings)
+        leaked = [str(p.relative_to(self.out)) for p in self.out.rglob("*")
+                  if p.name == DF.SETTINGS or p.name == D.SETTINGS_NAME]
+        self.assertEqual(leaked, [], "入れないと決めたのに入った")
+
+    def test_old_place_inside_module_is_not_copied(self):
+        """機能のフォルダの中の古い 配布設定\\ は写さない(入れる場所は決まった1か所)。"""
+        self._export(PENA, {"label_offset_x_mm": 2.5})
+        self._stale_in_module()
+        self.build(with_settings=True)
+        self.assertFalse((self.out / MODULE / DF.SETTINGS).exists())
+        self.assertTrue((self.out / DF.SETTINGS / PENA / D.SETTINGS_NAME).exists())
+
+    def test_only_exported_modules_go_in_and_the_rest_are_named(self):
+        self._export("packing_details", {"export_dir": "D:\\出力"})
+        r = self.build()
+        self.assertTrue((self.out / DF.SETTINGS / "packing_details").is_dir())
+        self.assertFalse((self.out / DF.SETTINGS / PENA).exists())
+        self.assertTrue(any("書き出していない機能" in ln and "ペナラベル" in ln
+                            and "資材計算" in ln for ln in r.lines))
+
+    def test_every_module_exports_where_the_build_reads(self):
+        """3機能の書き出し先(distribution.DIR)は、統合アプリの 配布設定\\<機能> が既定。"""
+        import importlib
+        for key, _, modname in dist_settings.MODULES:
+            env = {"packing_details": "PACKING_DETAILS_DISTRIBUTION_DIR",
+                   PENA: "PACKING_PENA_DISTRIBUTION_DIR",
+                   "packing_material_calculation": "COIL_TOOL_DISTRIBUTION_DIR"}[key]
+            module = importlib.import_module(modname)
+            src = open(module.__file__, encoding="utf-8").read()
+            self.assertIn(env, src, key)
+            self.assertIn('default_dir("%s")' % key, src, key)
+            self.assertEqual(dist_settings.default_dir(key),
+                             ROOT / "配布設定" / key)
 
     def test_refuses_to_build_inside_the_app(self):
         with self.assertRaises(DF.BuildRefused):

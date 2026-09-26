@@ -22,6 +22,7 @@ from typing import Dict, List
 from ..config import code_stamp as _code_stamp
 from ..services import size_master as SM
 from ..view import Renderer, esc, nl2br
+from common import idle_exit as _idle_exit        # 統合版: 心拍の間隔の出どころ
 
 #: サイズごとの色クラス（VBA フォームの配色を踏襲）
 _SIZE_CLASS = {
@@ -115,6 +116,8 @@ class PageRoutes:
             "title": title, "content": content, "pageScript": page_script,
             # 入口と起動トークン(統合版)。外枠の body に載せ、app.js が読む
             "base": self.base, "token": getattr(self.cfg, "app_token", "") or "",
+            # 自動終了の心拍の間隔(統合版)。別タブで開いた画面が送る
+            "aliveMs": _idle_exit.HEARTBEAT_MS,
             "appName": self.cfg.app_name, "appId": self.cfg.app_id,
             "version": self.cfg.version, "port": self.cfg.port,
             "build": getattr(self.cfg, "build", ""),
@@ -1250,8 +1253,8 @@ class PageRoutes:
             for c in dist["contents"])
         meta = (f'{esc(dist["createdAt"])} に {esc(dist["createdOn"])} で作成'
                 if dist["exists"] else
-                'まだありません。下で書き出すと、アプリのフォルダーの直下に'
-                '「配布設定」フォルダーができます。')
+                'まだありません。下で書き出すと、アプリのフォルダーの'
+                '「配布設定\\packing_pena_label」にできます。')
         applied = (f'この端末が最後に読み込んだ／書き出したとき: '
                    f'<b>{esc(dist["appliedAt"])}</b>' if dist["appliedAt"] else
                    'この端末はまだ配布設定を読み込んでいません。')
@@ -1579,7 +1582,7 @@ class PageRoutes:
     st.className = "pill " + (d.exists ? "ok" : "warn");
     dEl("distMeta").textContent = d.exists
       ? (d.createdAt + " に " + d.createdOn + " で作成")
-      : "まだありません。下で書き出すと、アプリのフォルダーの直下に「配布設定」フォルダーができます。";
+      : "まだありません。下で書き出すと、アプリのフォルダーの「配布設定\\\\packing_pena_label」にできます。";
     var tb = dEl("distRows");
     tb.innerHTML = "";
     (d.contents || []).forEach(function(c){

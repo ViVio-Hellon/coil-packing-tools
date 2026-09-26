@@ -108,9 +108,9 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 
 ```
 python -m unittest discover -s modules/packing_details/tests -t .        # 梱包明細   463
-python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 560
-python -m pytest modules/packing_material_calculation/tests              # 資材計算   431
-python -m pytest tests                                                   # 統合        79
+python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 565
+python -m pytest modules/packing_material_calculation/tests              # 資材計算   432
+python -m pytest tests                                                   # 統合       100
 python tools/smoke_shell.py                                              # 通し(配布前に一度)
 ```
 
@@ -122,4 +122,6 @@ python tools/smoke_shell.py                                              # 通�
 `python scripts\make_dist.py`(またはペナラベルの設定画面の「配布用フォルダを作る」)で、
 配るものだけを新しいフォルダへ写します(tests・tools・手元DBの写し・ログは入りません)。
 配った先では `Start.vbs` を押すだけです。各機能の配布設定(`配布設定\<機能>\`)は
-そのフォルダごと配れば、配った先が起動時に読み込みます。
+そのフォルダごと配れば、配った先が起動時に読み込みます。配布用フォルダを作るときは、
+書き出してある3機能ぶんの配布設定をまとめて入れます。`--no-settings`(画面では
+「配布設定を入れない」)を選ぶと、どの機能の配布設定も入れません。

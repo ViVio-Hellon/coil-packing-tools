@@ -191,22 +191,20 @@ def _shell_blueprint() -> Blueprint:
         あいだは終わらない。`leaving=true` はタブを閉じた合図(`sendBeacon`)。
         `state` は前(`visible`)か裏(`hidden`)か。裏では心拍が間引かれるので、
         裏だと言ってきたら心拍の途切れで終わらない。
+        `client` は画面の名乗り(開くたびに新しい名前)。見張りは名乗りごとに
+        数えるので、別のタブ(ペナラベルの印刷ビュー等)が開いていれば終わらない。
         """
         body = request.get_json(silent=True) or {}
         leaving = bool(body.get("leaving"))
         state = str(body.get("state", ""))
         hidden = {"hidden": True, "visible": False}.get(state)
         reason = str(body.get("reason", ""))[:20]
+        # 画面の名乗り。見張りは画面ごとに生き死にを持つ(別タブを巻き添えにしない)
+        client = str(body.get("client", ""))
         if reason and reason not in ("timer", "focus"):
             log.info("統合画面の心拍: %s (%s)", reason, state or "-")
-        watch = idle_exit.get()
-        if watch is None:
-            return jsonify({"ok": True, "pid": os.getpid(), "watching": False})
-        if leaving:
-            watch.leaving()
-        else:
-            watch.beat(hidden=hidden, keep_leaving=hidden is True)
-        return jsonify({"ok": True, "pid": os.getpid(), "watching": True})
+        watching = idle_exit.signal(client=client, leaving=leaving, hidden=hidden)
+        return jsonify({"ok": True, "pid": os.getpid(), "watching": watching})
 
     @bp.post("/api/shutdown")
     def shutdown():

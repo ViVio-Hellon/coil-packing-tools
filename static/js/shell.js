@@ -118,8 +118,15 @@
   // ---------------------------------------------------------- 心拍
   function visibility() { return document.visibilityState === "hidden" ? "hidden" : "visible"; }
 
+  // この画面の名乗り。**開くたびに新しい名前**にする(タブを複製すると
+  // sessionStorage も写るので、そこには置かない)。見張りは名乗りごとに
+  // 生き死にを持つので、別のタブ(ペナラベルの印刷ビュー)が開いていれば
+  // この画面を閉じてもサーバは終わらない
+  var CLIENT = "shell-" + Date.now().toString(36) + "-" +
+               Math.random().toString(36).slice(2, 10);
+
   function payload(extra) {
-    var body = { state: visibility() };
+    var body = { state: visibility(), client: CLIENT };
     Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
     return JSON.stringify(body);
   }
