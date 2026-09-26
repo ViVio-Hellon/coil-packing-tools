@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -171,6 +172,51 @@ def main(argv=None) -> int:
                 log_text = "".join(p.read_text(encoding="utf-8") for p in (local / "logs").glob("*.log"))
                 check("裏に回った合図がサーバに届く", "hidden" in log_text and "裏に回りました" in log_text)
                 check("コンソールにエラーが無い", not errs, "; ".join(errs)[:200])
+
+                print("■ 印刷(3機能とも)")
+                f_p = pg.frame(name="cpt-pena")       # 読み直したので枠を取り直す
+                # 前に戻す(裏に回った印を外す)
+                pg.evaluate("()=>{Object.defineProperty(document,'visibilityState',{get:()=>'visible',configurable:true});document.dispatchEvent(new Event('visibilitychange'));}")
+                # 刷る関数を記録に差し替える(本当の印刷ダイアログは出さない)
+                spy = ("()=>{window.__printed=[];window.print=()=>window.__printed.push('外枠');"
+                       "document.querySelectorAll('iframe').forEach(f=>{f.contentWindow.print=()=>window.__printed.push(f.name)})}")
+                pg.evaluate(spy)
+                pg.click("#tab-material"); pg.wait_for_timeout(200)
+                pg.click(".brand"); pg.keyboard.press("Control+p"); pg.wait_for_timeout(200)
+                check("外枠で Ctrl+P → 見せている資材計算の画面を刷る",
+                      pg.evaluate("()=>window.__printed") == ["cpt-material"], str(pg.evaluate("()=>window.__printed")))
+                pg.click("#tab-pena"); pg.wait_for_timeout(200)
+                f_p.click("#kensaNo"); pg.keyboard.press("Control+p"); pg.wait_for_timeout(200)
+                check("ペナラベルの画面の中で Ctrl+P → ペナラベルの画面を刷る(外枠は刷らない)",
+                      pg.evaluate("()=>window.__printed") == ["cpt-material", "cpt-pena"], str(pg.evaluate("()=>window.__printed")))
+                # 画面の中の印刷ボタン(ペナラベルの「試し刷り」)は、その画面(iframe)の文書を刷る。
+                # 位置合わせの画面は統合画面の中で開く(別のタブではない)
+                f_p.goto(base + "/pena/labels/calibration"); pg.wait_for_timeout(800)
+                f_p = pg.frame(name="cpt-pena")
+                pg.evaluate(spy)
+                f_p.click("button:has-text('試し刷り')"); pg.wait_for_timeout(200)
+                check("ペナラベルの画面の中の「試し刷り」は、その画面だけを刷る",
+                      pg.evaluate("()=>window.__printed") == ["cpt-pena"], str(pg.evaluate("()=>window.__printed")))
+                f_p.focus("button:has-text('試し刷り')"); pg.keyboard.press("Control+p"); pg.wait_for_timeout(200)
+                check("画面を移ったあとも Ctrl+P はその画面を刷る",
+                      pg.evaluate("()=>window.__printed") == ["cpt-pena", "cpt-pena"], str(pg.evaluate("()=>window.__printed")))
+                f_p.goto(base + "/pena/"); pg.wait_for_timeout(500)
+                # 別のタブで開く印刷ページ: 読み込みの失敗・エラーが無く、心拍を送る
+                for path, key in (("/pena/tare/print", "pena"), ("/pena/list/print", "pena"),
+                                  ("/pena/labels/print?ob=1", "pena"),
+                                  ("/material/report/checklist?t=" + token, "material")):
+                    tab = ctx.new_page()
+                    bad, perrs, beats = [], [], []
+                    tab.on("response", lambda r, bad=bad: bad.append("%s %s" % (r.status, r.url)) if r.status >= 400 else None)
+                    tab.on("console", lambda m, perrs=perrs: perrs.append(m.text) if m.type == "error" else None)
+                    tab.on("request", lambda r, beats=beats: beats.append(r.post_data or "") if r.url.endswith("/api/alive") else None)
+                    tab.add_init_script("window.print=function(){}")
+                    res = tab.goto(base + path); tab.wait_for_timeout(1200)
+                    check("印刷ページが開く: " + path.split("?")[0], res is not None and res.status == 200 and not bad and not perrs,
+                          "; ".join(bad + perrs)[:120])
+                    check("印刷ページが心拍を送る: " + path.split("?")[0],
+                          any(('"client":"tab-%s-' % key) in b.replace(" ", "") for b in beats), "%d 回" % len(beats))
+                    tab.close(run_before_unload=True)
                 br.close()
 
     print("■ 停止(stop.bat と同じ経路 = process_manager.py)")
@@ -192,7 +238,7 @@ def main(argv=None) -> int:
         except ImportError:
             sync_playwright = None
         if sync_playwright is not None:
-            print("■ 自動終了: 外枠を閉じても、ペナラベルの別タブが開いていれば終わらない")
+            print("■ 自動終了: 外枠を閉じても、印刷の別タブが開いていれば終わらない")
             # 止めた直後は前のポートがまだ空かないことがある(試験の都合)。別の番号で立てる
             with socket.socket() as s2:
                 s2.bind(("127.0.0.1", 0)); port = s2.getsockname()[1]
@@ -226,30 +272,34 @@ def main(argv=None) -> int:
                 exe = os.environ.get("PLAYWRIGHT_CHROMIUM", "/opt/pw-browsers/chromium")
                 br = pw.chromium.launch(executable_path=exe if os.path.exists(exe) else None)
                 ctx = br.new_context(viewport={"width": 1366, "height": 900})
+                beats = []
+                ctx.on("request", lambda r: beats.append((r.post_data or "").replace(" ", ""))
+                       if r.url.endswith("/api/alive") else None)
                 shell = ctx.new_page()
                 shell.goto(base + "/?t=" + token2); shell.wait_for_timeout(2500)
-                pena_beats = []
-                ctx.on("request", lambda r: pena_beats.append(r.post_data or "")
-                       if r.url.endswith("/pena/api/alive") else None)
-                sheet = ctx.new_page()             # 印刷ビュー(ふだんは別タブで開く)
+                check("統合画面の中の画面は別タブの心拍を送らない(外枠が送る)",
+                      not any('"client":"tab-' in b for b in beats) and any('"client":"shell-' in b for b in beats))
+                ctx.add_init_script("window.print=function(){}")
+                sheet = ctx.new_page()             # ペナラベルの印刷ビュー(ふだんは別タブで開く)
                 sheet.goto(base + "/pena/tare/print"); sheet.wait_for_timeout(1500)
-                check("別タブのペナラベルが自分の名乗りで心拍を送る",
-                      any('"client": "pena-' in b or '"client":"pena-' in b for b in pena_beats),
-                      "%d 回" % len(pena_beats))
-                in_frame = shell.frame(name="cpt-pena")
-                check("統合画面の中のペナラベルは送らない(外枠が送る)",
-                      in_frame is not None and in_frame.evaluate("()=>window.top!==window"))
+                paper = ctx.new_page()             # 資材計算のチェックリスト(同じく別タブ)
+                paper.goto(base + "/material/report/checklist?t=" + token2); paper.wait_for_timeout(1500)
+                check("別タブの印刷ページは心拍を送る",
+                      any('"client":"tab-pena-' in b for b in beats) and any('"client":"tab-material-' in b for b in beats))
                 shell.close(run_before_unload=True)
                 time.sleep(settle)
-                check("外枠を閉じても、印刷ビューが開いていれば終わらない", proc2.poll() is None)
+                check("外枠を閉じても、印刷ページが開いていれば終わらない", proc2.poll() is None)
                 st, _ = get("/api/health")
-                check("印刷ビューはまだサーバに届く", st == 200)
+                check("印刷ページはまだサーバに届く", st == 200)
                 sheet.close(run_before_unload=True)
+                time.sleep(settle)
+                check("ペナラベルの印刷ビューを閉じても、資材計算のが開いていれば終わらない", proc2.poll() is None)
+                paper.close(run_before_unload=True)
                 try:
                     proc2.wait(timeout=settle + 10); ended = True
                 except subprocess.TimeoutExpired:
                     ended = False
-                check("印刷ビューも閉じたら自分で終わる", ended)
+                check("印刷ページを全部閉じたら自分で終わる", ended)
                 br.close()
             if proc2.poll() is None:
                 subprocess.run([sys.executable, str(ROOT / "process_manager.py")], cwd=str(home),
@@ -263,6 +313,71 @@ def main(argv=None) -> int:
             check("ログに「ほかに開いている画面がある」と残る", "ほかに" in log_text and "終了しません" in log_text)
             check("ログに閉じられたので終了したと残る", "誰も見ていないので終了します(画面が閉じられました)" in log_text)
             check("自動終了でもロックが消える", not (local / "runtime" / "main.lock").exists())
+
+    print("■ 版: 機能の版だけを上げて配っても、古いプロセスに合流せず入れ替わる")
+    copy = home / "app_copy"
+    shutil.copytree(str(ROOT), str(copy), ignore=shutil.ignore_patterns(
+        ".git", "__pycache__", ".pytest_cache", "配布設定", "export"))
+    with socket.socket() as s3:
+        s3.bind(("127.0.0.1", 0)); port = s3.getsockname()[1]
+    data = json.loads(conf.read_text(encoding="utf-8"))
+    data["server"]["roles"]["main"]["port"] = port
+    # 本番(config/app.json)と同じく予備の番号を使う。止めた直後は前の番号が
+    # すぐには空かないことがあり、そのときは次の番号で立つ
+    data["server"]["port_retry"] = 3
+    conf.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    base = "http://127.0.0.1:%d" % port
+
+    def wait_ready(want=None, pid=None):
+        url_base = None
+        for _ in range(300):
+            try:
+                if pid is not None:
+                    lk = json.loads((local / "runtime" / "main.lock").read_text(encoding="utf-8"))
+                    if lk.get("pid") != pid:
+                        raise ValueError("まだ前のロック")
+                    url_base = "http://127.0.0.1:%d" % lk["port"]
+                req = urllib.request.Request((url_base or base) + "/api/health")
+                with opener.open(req, timeout=5) as r:
+                    h = json.loads(r.read().decode("utf-8"))
+                if h.get("ready") and (want is None or want in h.get("version_set", "")):
+                    return h
+            except Exception:
+                pass
+            time.sleep(0.3)
+        return None
+
+    old = subprocess.Popen([sys.executable, str(copy / "start_app.py"), "--no-browser"], cwd=str(home),
+                           env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    h_old = wait_ready()
+    check("写しが起動し、版の組を答える", bool(h_old) and "details=" in h_old.get("version_set", ""),
+          (h_old or {}).get("version_set", ""))
+    app_json = copy / "modules" / "packing_details" / "config" / "app.json"
+    meta = json.loads(app_json.read_text(encoding="utf-8"))
+    before = meta["version"]; meta["version"] = "9.9.9"
+    app_json.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    new = subprocess.Popen([sys.executable, str(copy / "start_app.py"), "--no-browser"], cwd=str(home),
+                           env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    h_new = wait_ready("details=9.9.9", pid=new.pid)
+    try:
+        old.wait(timeout=20); old_gone = True
+    except subprocess.TimeoutExpired:
+        old_gone = False; old.kill()
+    check("統合ツールの版は同じでも、梱包明細の版が違えば入れ替わる",
+          bool(h_new) and old_gone and h_new.get("pid") == new.pid and h_new.get("version") == h_old.get("version"),
+          (h_new or {}).get("version_set", ""))
+    subprocess.run([sys.executable, str(copy / "process_manager.py")], cwd=str(home), env=env,
+                   capture_output=True, text=True, timeout=60)
+    try:
+        new.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        new.kill()
+    out_old = old.communicate(timeout=10)[0]; out_new = new.communicate(timeout=10)[0]
+    if not (h_new and old_gone):
+        print("--- 古いほう ---"); print(out_old[-1200:]); print("--- 新しいほう ---"); print(out_new[-1500:])
+    log_text = "".join(p.read_text(encoding="utf-8") for p in (local / "logs").glob("*.log"))
+    check("ログに何の版が違ったかが残る", "別の版を終わらせました(梱包明細 %s → 9.9.9)" % before in log_text)
+    check("ログに起動した版の一覧が残る", "版: コイル梱包ツール" in log_text and "梱包明細 9.9.9" in log_text)
 
     print("=" * 76)
     ng = [r for r in results if not r[1]]

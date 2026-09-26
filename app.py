@@ -36,9 +36,10 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from flask import Blueprint, Flask, current_app, jsonify, redirect, render_template, request
+from flask import (Blueprint, Flask, current_app, jsonify, redirect, render_template, request,
+                   url_for)
 
-from common import app_config, boot_screen, idle_exit, modes, security
+from common import app_config, boot_screen, idle_exit, modes, security, versions
 from common.logging_utils import get_logger
 
 log = get_logger("coil_packing_tools", "app")
@@ -108,17 +109,80 @@ def create_app(mode: str = modes.MAIN, *, token: Optional[str] = None,
             "key": module.KEY, "label": module.LABEL, "prefix": module.PREFIX,
             "home": module.HOME, "display_name": module.display_name(),
             "version": module.version(),
+            "ported_from": dict(getattr(module, "PORTED_FROM", {}) or {}),
         })
     app.config["MODULES"] = loaded
+    # 版は**統合ツールの版と3機能の版を分けて**持つ(common/versions.py)。
+    # このプロセスが読み込んだ中身の版。起動時の入れ替え判定はこの組で比べる
+    app.config["VERSIONS"] = {versions.APP_KEY: app.config["VERSION"],
+                              **{m["key"]: m["version"] for m in loaded}}
+    app.config["VERSION_SET"] = versions.version_set(app.config["VERSIONS"])
+    _install_tab_alive(app, [m["prefix"] for m in loaded])
 
     @app.errorhandler(404)
     def _not_found(_e):                         # noqa: ANN202 - Flaskのフック
         return jsonify({"error": {"code": "not_found",
                                   "message": "ページが見つかりません"}}), 404
 
-    log.info("create_app: port=%s version=%s 機能=%s", app.config["PORT"],
-             app.config["VERSION"], ", ".join(m["key"] for m in loaded))
+    log.info("create_app: port=%s 版=%s", app.config["PORT"],
+             versions.describe(app.config["VERSIONS"]))
     return app
+
+
+# ------------------------------------------------------------------
+# 別のタブで開いた画面の心拍(帳票・印刷ビュー)
+# ------------------------------------------------------------------
+#: 差し込んだ印。2度差し込まない
+TAB_ALIVE_MARK = "js/tab_alive.js"
+
+
+def inject_tab_alive(html: str, tag: str) -> str:
+    """HTML の末尾(最後の `</body>` の前)に心拍のスクリプトを1つ差し込む。
+
+    `</body>` が無ければ最後に足す。すでに入っていれば何もしない。
+    """
+    if TAB_ALIVE_MARK in html:
+        return html
+    at = html.lower().rfind("</body>")
+    if at < 0:
+        return html + tag
+    return html[:at] + tag + html[at:]
+
+
+def _install_tab_alive(app: Flask, prefixes: list) -> None:
+    """3機能の画面(HTML)に `static/js/tab_alive.js` を差し込む。
+
+    **3機能とも印刷は別のタブで開く**(梱包明細の帳票・ペナラベルの印刷ビュー・
+    資材計算のチェックリストと発注票)。統合画面のタブを閉じても、開いたままの
+    帳票があるあいだはサーバを止めない ── 帳票は紙面で書き足した値を保存し、
+    発注票はサーバが覚えている中身から組むため。
+
+    スクリプトは**別のタブ(一番上の窓)で開いたときだけ**心拍を送り、統合画面の
+    中(iframe)では何もしない。画面にも紙面にも何も描かないので、印刷の見た目は
+    変わらない。各機能のコードは触らずに、ここで差し込む。
+    """
+    roots = tuple(p.rstrip("/") for p in prefixes if p)
+
+    @app.after_request
+    def _tab_alive(response):                   # noqa: ANN202 - Flaskのフック
+        if (request.method != "GET" or response.status_code != 200
+                or response.mimetype != "text/html"
+                or response.direct_passthrough or not response.is_sequence):
+            return response
+        path = request.path
+        if not any(path == r or path.startswith(r + "/") for r in roots):
+            return response
+        # ペナラベルの「中身だけ返す」要求(統合画面の中で差し替える断片)
+        if request.args.get("pane") == "1":
+            return response
+        key = next(r for r in roots if path == r or path.startswith(r + "/")).lstrip("/")
+        tag = ('<script src="%s" data-key="%s" data-alive-ms="%d" defer></script>'
+               % (url_for("static", filename=TAB_ALIVE_MARK), key, idle_exit.HEARTBEAT_MS))
+        html = response.get_data(as_text=True)
+        injected = inject_tab_alive(html, tag)
+        if injected is not html:
+            response.set_data(injected)
+        return response
 
 
 # ------------------------------------------------------------------
@@ -165,6 +229,9 @@ def _shell_blueprint() -> Blueprint:
             "app_id": conf["APP_ID"],
             "display_name": conf["DISPLAY_NAME"],
             "version": conf["VERSION"],
+            # 統合ツールの版と3機能の版(分けて持つ)。入れ替え判定はこの組で比べる
+            "versions": conf["VERSIONS"],
+            "version_set": conf["VERSION_SET"],
             "version_problem": app_config.version_problem(),
             "app_root": str(app_config.APP_ROOT),
             "mode": conf["MODE"],
@@ -179,8 +246,19 @@ def _shell_blueprint() -> Blueprint:
             "job": None,
             "modules": [{"key": m["key"], "label": m["label"],
                          "display_name": m["display_name"], "version": m["version"],
+                         "ported_from": m["ported_from"],
                          "home": m["home"]} for m in conf["MODULES"]],
         })
+
+    @bp.get("/favicon.ico")
+    def favicon():
+        """ブラウザが勝手に取りに来るアイコン。**中身なし(204)で答える。**
+
+        ペナラベルの移植元が根でこう答えていた。統合版ではペナラベルが `/pena` の
+        下に移ったので、根で答えないと、アイコンを指定していない画面(印刷ビュー・
+        帳票)を別のタブで開くたびに 404 がコンソールに出る。
+        """
+        return current_app.response_class(b"", status=204, mimetype="image/x-icon")
 
     @bp.post("/api/alive")
     def alive():
@@ -202,7 +280,8 @@ def _shell_blueprint() -> Blueprint:
         # 画面の名乗り。見張りは画面ごとに生き死にを持つ(別タブを巻き添えにしない)
         client = str(body.get("client", ""))
         if reason and reason not in ("timer", "focus"):
-            log.info("統合画面の心拍: %s (%s)", reason, state or "-")
+            who = "統合画面" if not client or client.startswith("shell-") else f"別タブ {client}"
+            log.info("%sの心拍: %s (%s)", who, reason, state or "-")
         watching = idle_exit.signal(client=client, leaving=leaving, hidden=hidden)
         return jsonify({"ok": True, "pid": os.getpid(), "watching": watching})
 

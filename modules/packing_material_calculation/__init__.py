@@ -17,6 +17,9 @@ PREFIX = "/material"
 LABEL = "資材計算"
 HOME = f"{PREFIX}/calc"
 
+#: 取り込んだときの移植元と版(記録。**この機能の版とは別**。common/versions.py)
+PORTED_FROM = {"repo": "ViVio-Hellon/packing-material-calculation-python-web", "version": "0.2.0"}
+
 # 取り込みを待つ上限(秒)。共有に届かない端末では、応答が返るまで
 # OS 側で数十秒かかることがある。**待たせきりにはしない** ── ここを
 # 過ぎたら準備完了にして、取り込みは背景で続ける

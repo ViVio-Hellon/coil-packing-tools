@@ -35,7 +35,7 @@ from typing import Optional
 from flask import (Blueprint, Flask, Response, current_app, jsonify, request,
                    send_from_directory)
 
-from common import idle_exit, security
+from common import security
 
 from .app.config import load_config
 from .app.repositories.material_repo import MaterialRepository
@@ -59,12 +59,9 @@ MAX_BODY = 1 * 1024 * 1024
 #: `/api/*` のうちトークンを要求しないもの。
 #:   /api/health … まだトークンを知らない相手(起動確認)が叩く
 #:   /api/screen/* … 画面の受付。`sendBeacon` はヘッダを付けられない
-#:   /api/alive … 自動終了の心拍(統合版)。同じく `sendBeacon` で届く。
-#:                業務データは返さない。トークンを要求すると、切れた画面が
-#:                黙って死んだ扱いになり、開いているのに終わってしまう
 TOKEN_EXEMPT = frozenset({
     "/api/health", "/api/screen/claim", "/api/screen/ping",
-    "/api/screen/release", "/api/screen/state", "/api/alive",
+    "/api/screen/release", "/api/screen/state",
 })
 
 
@@ -194,8 +191,6 @@ def build_blueprint(url_prefix: str = DEFAULT_PREFIX, *,
         rel = "/" + path.rstrip("/") if path else "/"
         if rel.startswith("/fonts/"):
             return _serve_font(rel)
-        if rel == "/api/alive" and request.method == "POST":
-            return _alive()
         if rel.startswith("/api/"):
             return _api(ctx, rel)
         return _page(ctx, rel, prefix)
@@ -252,27 +247,6 @@ def _serve_font(rel: str) -> Response:
         return _error_page(404, "フォントが見つかりません。",
                            security.module_prefix(KEY))
     return send_from_directory(str(base), name, mimetype="font/ttf")
-
-
-def _alive() -> Response:
-    """自動終了の心拍(統合版で足した受け口)。
-
-    移植元のペナラベルは自動では止まらない作りだった。統合版は3機能が
-    同じプロセスに同居し、画面が全部居なくなると終わる。**別のタブで開いた
-    ペナラベルの画面(印刷ビューなど)は、ここへ自分の名乗り(`client`)で
-    心拍を送る。** 見張りは名乗りごとに数えるので、外枠のタブを閉じても、
-    印刷ビューを開いている間は終わらない。
-
-    `leaving=true` は閉じた合図、`state` は前(`visible`)か裏(`hidden`)か。
-    形は統合画面の `/api/alive` と同じ。
-    """
-    body = request.get_json(silent=True) or {}
-    if not isinstance(body, dict):
-        body = {}
-    hidden = {"hidden": True, "visible": False}.get(str(body.get("state", "")))
-    watching = idle_exit.signal(client=str(body.get("client", "")),
-                                leaving=bool(body.get("leaving")), hidden=hidden)
-    return jsonify({"ok": True, "watching": watching})
 
 
 def _api(ctx: AppContext, rel: str) -> Response:

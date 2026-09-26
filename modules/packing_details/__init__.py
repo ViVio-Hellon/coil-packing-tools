@@ -22,6 +22,9 @@ PREFIX = "/details"
 LABEL = "梱包明細"
 HOME = f"{PREFIX}/meisai"
 
+#: 取り込んだときの移植元と版(記録。**この機能の版とは別**。common/versions.py)
+PORTED_FROM = {"repo": "ViVio-Hellon/packing-details-python-web", "version": "0.13.1"}
+
 # 取り込みを待つ上限(秒)。共有に届かない端末では、応答が返るまで
 # OS 側で数十秒かかることがある。**待たせきりにはしない**
 IMPORT_WAIT_LIMIT_SEC = 120

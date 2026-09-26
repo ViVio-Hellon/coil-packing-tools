@@ -195,6 +195,12 @@ def log_environment(mode: str) -> None:
     log().info("起動: mode=%s pid=%s", mode, os.getpid())
     log().info("Python: %s (%s)", sys.version.split()[0], sys.executable)
     log().info("アプリ本体: %s", APP_ROOT)
+    try:
+        from common import versions
+        # 統合ツールの版と3機能の版(分けて持つ)。「どの版が動いていたか」を後から追う
+        log().info("版: %s", versions.describe())
+    except Exception as exc:                        # noqa: BLE001 - 起動は止めない
+        log().warning("版を読めませんでした: %s", exc)
     log().info("ローカル領域: %s", app_config.local_root())
 
 

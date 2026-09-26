@@ -52,6 +52,21 @@ body{ background:var(--ground); color:var(--ink); font-family:var(--sans); font-
   padding:2px 8px; border-radius:999px; background:var(--bar-face);
   border:1px solid var(--bar-edge); color:var(--bar-muted);
 }
+button.ver{ cursor:pointer; }
+button.ver:hover{ color:var(--bar-ink); }
+.topbar{ position:relative; }
+.verpanel{
+  position:absolute; top:40px; left:16px; z-index:10; min-width:360px; max-width:calc(100vw - 32px);
+  background:var(--ground); color:var(--ink); border:1px solid var(--tab-line); border-radius:8px;
+  box-shadow:0 8px 24px #0003; padding:10px 12px; font-size:13px;
+}
+.verpanel table{ border-collapse:collapse; width:100%; }
+.verpanel th, .verpanel td{ text-align:left; padding:4px 8px; border-bottom:1px solid var(--tab-line); white-space:nowrap; }
+.verpanel thead th{ font-size:11px; opacity:.7; font-weight:600; }
+.verpanel tbody th small{ display:block; font-weight:400; font-size:11px; opacity:.7; }
+.verpanel td{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+.verpanel__app th, .verpanel__app td{ font-weight:700; }
+.verpanel p{ margin:8px 0 0; font-size:12px; opacity:.8; white-space:normal; }
 .topbar__end{ margin-left:auto; display:flex; align-items:center; gap:10px; white-space:nowrap; }
 .conn{ font-size:12px; color:var(--bar-muted); }
 .conn.ok{ color:var(--ok); }
@@ -98,3 +113,16 @@ body{ background:var(--ground); color:var(--ink); font-family:var(--sans); font-
 .panes{ position:relative; flex:1 1 auto; min-height:0; }
 .pane{ position:absolute; inset:0; }
 .pane__frame{ width:100%; height:100%; border:0; display:block; background:var(--ground); }
+
+/* 印刷: ブラウザのメニューから刷ったとき(Ctrl+P は shell.js が機能の画面を刷る)。
+   見出し・タブ・知らせは紙に出さず、見せている機能の画面だけを出す。
+   ただし iframe は紙の1枚目に収まる分しか出ないので、**各機能の印刷ボタンか
+   Ctrl+P を使う**(README)。 */
+@media print{
+  .topbar, .tabs, .banner{ display:none !important; }
+  html, body, .shell{ height:auto; background:#fff; }
+  .panes{ position:static; }
+  .pane{ position:static; }
+  .pane__frame{ height:100vh; background:#fff; }
+}
+

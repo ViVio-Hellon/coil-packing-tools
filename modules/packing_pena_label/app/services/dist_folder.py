@@ -53,6 +53,7 @@ from typing import List, Optional, Tuple
 from ..config import APP_BUILD, ROOT_DIR, code_stamp
 from common import app_config as _integrated
 from common import dist_settings as _dist_settings
+from common import versions as _versions
 
 log = logging.getLogger(__name__)
 
@@ -237,7 +238,9 @@ def build(out: Optional[Path] = None, *, with_settings: bool = True,
             raise BuildRefused("配るはずのファイルがありません: " + ", ".join(missing))
 
         lines = ["配布用フォルダを作りました: %s" % out,
-                 "版: v%s（%s）／中身の指紋 %s" % (APP_VERSION, APP_BUILD, code_stamp())]
+                 # 統合ツールの版と3機能の版(分けて持つ。common/versions.py)
+                 "版: %s" % _versions.describe(),
+                 "   （ペナラベルの中身の指紋 %s / %s）" % (code_stamp(), APP_BUILD)]
         if (out / "runtime").is_dir():
             lines.append("同梱の Python（runtime フォルダ）を入れました。")
         else:

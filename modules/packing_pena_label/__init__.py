@@ -17,6 +17,9 @@ PREFIX = "/pena"
 LABEL = "ペナラベル"
 HOME = f"{PREFIX}/"
 
+#: 取り込んだときの移植元と版(記録。**この機能の版とは別**。common/versions.py)
+PORTED_FROM = {"repo": "ViVio-Hellon/packing-pena-label-python-web", "version": "1.5.0"}
+
 
 def display_name() -> str:
     from .app.config import load_config

@@ -5,6 +5,7 @@
     ・タブの切り替え(iframe を見せる/隠す。**外さない**)
     ・アプリ全体の心拍(`/api/alive`)と生存確認(`/api/health`)
     ・終了ボタン
+    ・Ctrl+P で、いま見せている機能の画面を刷る(外枠を刷らない)
 
   【ここがしないこと】
     3機能の画面の中のこと。中の画面は自分の心拍・画面の見張り・
@@ -72,6 +73,62 @@
   window.addEventListener("hashchange", function () {
     var key = (location.hash || "").slice(1);
     if (key) show(key);
+  });
+
+  // ---------------------------------------------------------- 版の一覧
+  // 統合ツールの版と3機能の版は分けて持つ。帯の版を押すと一覧が出る
+  (function () {
+    var btn = $("verBtn"), panel = $("verPanel");
+    if (!btn || !panel) return;
+    function set(open) {
+      panel.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    btn.addEventListener("click", function (e) { e.stopPropagation(); set(panel.hidden); });
+    document.addEventListener("click", function (e) {
+      if (!panel.hidden && !panel.contains(e.target)) set(false);
+    });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") set(false); });
+    // 機能の画面(iframe)を押すと外枠の文書には click が来ないので、窓から焦点が外れたら閉じる
+    window.addEventListener("blur", function () { set(false); });
+  })();
+
+  // ---------------------------------------------------------- 印刷(Ctrl+P)
+  // 3機能の画面は iframe の中にある。ブラウザの Ctrl+P は**一番外の文書**
+  // (この外枠)を刷るので、そのままでは見出しとタブと、iframe の見えている
+  // 部分だけが紙に出る。**Ctrl+P は、いま見せている機能の画面を刷る**
+  // (移植元で Ctrl+P を押したときと同じ紙面)。機能の画面の中で押しても同じ。
+  // 各機能の「印刷」ボタン(帳票を別のタブに出す・その画面で window.print)は
+  // これまでどおりで、ここは関わらない。
+  function currentFrame() {
+    var pane = panes.filter(function (p) { return !p.hidden; })[0];
+    return pane ? pane.querySelector("iframe") : null;
+  }
+  function isPrintKey(e) {
+    return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
+           (e.key === "p" || e.key === "P");
+  }
+  function printCurrent(e) {
+    if (!isPrintKey(e)) return;
+    var frame = currentFrame();
+    var win = frame && frame.contentWindow;
+    if (!win) return;                          // 画面が無ければブラウザに任せる
+    e.preventDefault();
+    e.stopPropagation();
+    try { win.focus(); win.print(); } catch (err) { window.print(); }
+  }
+  document.addEventListener("keydown", printCurrent, true);
+  // 機能の画面の中で押されたときも拾う(同じアプリなので中の文書に触れる)。
+  // 画面を移る(iframe の中で別のページを開く)たびに文書が替わるので、読み込むたびに付け直す
+  panes.forEach(function (p) {
+    var frame = p.querySelector("iframe");
+    if (!frame) return;
+    function attach() {
+      try { frame.contentWindow.document.addEventListener("keydown", printCurrent, true); }
+      catch (err) { /* 触れない文書(起きないはず)はブラウザに任せる */ }
+    }
+    frame.addEventListener("load", attach);
+    attach();
   });
 
   // ---------------------------------------------------------- 生存確認

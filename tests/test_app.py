@@ -240,6 +240,94 @@ class TokenTest(unittest.TestCase):
                 self.assertEqual(res.status_code, 403)
 
 
+class TabAliveInjectionTest(unittest.TestCase):
+    """別のタブで開く画面(帳票・印刷ビュー)に心拍のスクリプトが入る。
+
+    3機能とも印刷は別のタブで開く。統合アプリが HTML の末尾に差し込み、
+    各機能のコードと紙面の中身は変えない。
+    """
+
+    def setUp(self):
+        self.app = _make_app(self)
+        self.client = self.app.test_client()
+
+    def _get(self, path: str) -> str:
+        res = self.client.get(path)
+        self.assertEqual(res.status_code, 200, path)
+        return res.get_data(as_text=True)
+
+    def _tags(self, html: str) -> list:
+        import re
+        return re.findall(r'<script src="/static/js/tab_alive\.js[^"]*"[^>]*></script>', html)
+
+    def test_3機能の印刷ページに1つずつ入る(self):
+        for path, key in (("/pena/tare/print", "pena"),
+                          ("/pena/list/print", "pena"),
+                          (f"/material/report/checklist?t={TOKEN}", "material"),
+                          (f"/details/meisai?t={TOKEN}", "details")):
+            html = self._get(path)
+            tags = self._tags(html)
+            self.assertEqual(len(tags), 1, path)
+            self.assertIn(f'data-key="{key}"', tags[0])
+            self.assertIn(f'data-alive-ms="{idle_exit.HEARTBEAT_MS}"', tags[0])
+            # 最後の </body> の直前(紙面の中身の後ろ)
+            self.assertLess(html.rindex(tags[0]), html.lower().rindex("</body>"), path)
+
+    def test_梱包明細の帳票にも入る_書き足しの保存はそのまま(self):
+        """帳票は刷る前に紙面で書き足した値をサーバへ保存する。開いている間は止めない。"""
+        from unittest import mock
+        from modules.packing_details.app.routes import meisai as details_routes
+        from modules.packing_details.meisai.meisai_service import Output
+        out = Output(lot_no="L5160Z0", seq_no=1, keys=["1-10", "2-8"], weights=[250, 248])
+        with mock.patch.object(details_routes.meisai_service, "find_output", return_value=out):
+            html = self._get(f"/details/report/L5160Z0/1?t={TOKEN}")
+        tags = self._tags(html)
+        self.assertEqual(len(tags), 1)
+        self.assertIn('data-key="details"', tags[0])
+        self.assertIn("/details/report/L5160Z0/edits", html, "書き足しの送り先が変わった")
+        self.assertLess(html.rindex("/report/qa-mark"), html.rindex(tags[0]),
+                        "帳票のスクリプトより後ろに入る")
+
+    def test_紙面の中身は変えない(self):
+        """差し込むのはスクリプト1つだけ。紙面の中身には触らない。"""
+        import app as app_module
+        html = self._get("/pena/list/print")
+        (tag,) = self._tags(html)
+        self.assertEqual(app_module.inject_tab_alive("<p>x</p></body>", tag),
+                         "<p>x</p>" + tag + "</body>")
+        self.assertEqual(html.lower().count("</body>"), 1)
+
+    def test_統合画面の中へ差し替える断片には入れない(self):
+        html = self._get("/pena/tare?pane=1")
+        self.assertEqual(self._tags(html), [])
+
+    def test_統合画面そのものとAPIには入れない(self):
+        self.assertEqual(self._tags(self._get(f"/?t={TOKEN}")), [])
+        body = self.client.get("/pena/api/health").get_data(as_text=True)
+        self.assertNotIn("tab_alive", body)
+
+    def test_スクリプトそのものが配られる(self):
+        res = self.client.get("/static/js/tab_alive.js")
+        self.assertEqual(res.status_code, 200)
+        text = res.get_data(as_text=True)
+        self.assertIn("window.top !== window", text, "統合画面の中では送らない")
+        self.assertIn("leaving: true", text)
+
+    def test_アイコンは根で中身なしに答える(self):
+        """ペナラベルの移植元と同じ。印刷ビューを開くたびに 404 を出さない。"""
+        res = self.client.get("/favicon.ico")
+        self.assertEqual(res.status_code, 204)
+
+    def test_差し込みの決まり(self):
+        import app as app_module
+        tag = '<script src="/static/js/tab_alive.js"></script>'
+        self.assertEqual(app_module.inject_tab_alive("<b>a</b></BODY></html>", tag),
+                         "<b>a</b>" + tag + "</BODY></html>")
+        self.assertEqual(app_module.inject_tab_alive("<b>a</b>", tag), "<b>a</b>" + tag)
+        once = app_module.inject_tab_alive("<b>a</b></body>", tag)
+        self.assertEqual(app_module.inject_tab_alive(once, tag), once, "2度入れない")
+
+
 class AliveAndShutdownTest(unittest.TestCase):
     def setUp(self):
         self.app = _make_app(self)
@@ -290,31 +378,20 @@ class AliveAndShutdownTest(unittest.TestCase):
         self.client.post("/material/api/alive", json={"hidden": False})
         self.assertIsNotNone(self.watch._seen)
 
-    def test_外枠を閉じてもペナラベルの別タブが開いていれば終わらない(self):
-        """ペナラベルの移植元は「使っている間は止まらない」作り。印刷ビューは別タブで開く。"""
+    def test_外枠を閉じても印刷の別タブが開いていれば終わらない(self):
+        """3機能とも印刷は別のタブで開く。帳票が開いているあいだは終わらない。"""
         self.client.post("/api/alive", json={"state": "visible", "client": "shell-a"})
-        # 別タブの印刷ビュー。sendBeacon で届くのでトークンは付かない
-        res = self.client.post("/pena/api/alive", json={"state": "visible", "client": "pena-a",
-                                                        "reason": "open"})
-        self.assertEqual(res.status_code, 200)
+        # 別タブの帳票(tab_alive.js)。sendBeacon で届くのでトークンは付かない
+        res = self.client.post("/api/alive", json={"state": "visible", "client": "tab-details-a",
+                                                   "reason": "open"})
         self.assertTrue(res.get_json()["watching"])
         self.client.post("/api/alive", json={"leaving": True, "client": "shell-a"})
         self.watch._screens["shell-a"].leaving_at = time.monotonic() - 9
-        self.assertIsNone(self.watch.overdue(), "開いている印刷ビューごと終わった")
-        # 印刷ビューも閉じたら終わる
-        self.client.post("/pena/api/alive", json={"leaving": True, "client": "pena-a"})
-        self.watch._screens["pena-a"].leaving_at = time.monotonic() - 9
+        self.assertIsNone(self.watch.overdue(), "開いている帳票ごと終わった")
+        # 帳票も閉じたら終わる
+        self.client.post("/api/alive", json={"leaving": True, "client": "tab-details-a"})
+        self.watch._screens["tab-details-a"].leaving_at = time.monotonic() - 9
         self.assertEqual(self.watch.overdue(), "画面が閉じられました")
-
-    def test_ペナラベルの心拍もよそのページからは受けない(self):
-        res = self.client.post("/pena/api/alive", json={"client": "pena-x"},
-                               headers={"Sec-Fetch-Site": "cross-site"})
-        self.assertEqual(res.status_code, 403)
-        self.assertNotIn("pena-x", self.watch.screens())
-
-    def test_ペナラベルの画面は心拍の間隔を受け取る(self):
-        html = self.client.get(f"/pena/?t={TOKEN}").get_data(as_text=True)
-        self.assertIn(f'data-alive-ms="{idle_exit.HEARTBEAT_MS}"', html)
 
     def test_資材計算の画面も裏に回った合図で閉じた合図を取り消さない(self):
         """統合画面を閉じると、中の資材計算から「閉じた」「裏に回った」が順不同で届く。"""

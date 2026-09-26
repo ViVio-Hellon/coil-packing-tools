@@ -104,13 +104,35 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 設定画面で、その機能の置き場所・パスワード・配布設定を扱います。統合アプリ自身の
 設定は `config/app.json`(ポート・表示名・版)だけです。
 
+## 版
+
+版は**統合ツールの版と3機能の版を分けて**持ちます。画面の帯の版を押すと一覧が出ます。
+
+| | 版 | 出どころ |
+|---|---|---|
+| コイル梱包ツール(統合ツール) | 1.0.0 | `config/app.json` |
+| 梱包明細 | 0.13.1 | `modules/packing_details/config/app.json` |
+| ペナラベル | 1.5.0 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| 資材計算 | 0.2.0 | `modules/packing_material_calculation/config/app.json` |
+
+機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
+だけを変えたら、統合ツールの版だけを上げます。決まりの全体は `docs/変更履歴.md`。
+
+## 印刷
+
+3機能とも、これまでどおり各画面の印刷ボタンで刷ります。帳票・印刷ビューは別のタブで開き、
+**開いているあいだはサーバが止まりません**(統合画面のタブを閉じても、帳票で書き足した
+値の保存や発注票の印刷は続けられます)。統合画面で **Ctrl+P** を押すと、いま見せている
+機能の画面が刷られます。ブラウザのメニューから印刷すると、見せている画面の1枚目の分しか
+出ないので、各画面の印刷ボタンか Ctrl+P を使ってください。
+
 ## テスト
 
 ```
 python -m unittest discover -s modules/packing_details/tests -t .        # 梱包明細   463
-python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 565
+python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 566
 python -m pytest modules/packing_material_calculation/tests              # 資材計算   432
-python -m pytest tests                                                   # 統合       100
+python -m pytest tests                                                   # 統合       119
 python tools/smoke_shell.py                                              # 通し(配布前に一度)
 ```
 

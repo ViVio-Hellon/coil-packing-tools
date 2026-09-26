@@ -211,6 +211,16 @@ class DistFolderTest(unittest.TestCase):
             self.assertEqual(dist_settings.default_dir(key),
                              ROOT / "配布設定" / key)
 
+    def test_memo_names_every_version_separately(self):
+        """配布メモには統合ツールの版と3機能の版を分けて書く(どの版を配ったか後で追える)。"""
+        from common import versions
+        self.build()
+        memo = (self.out / DF.MEMO_NAME).read_text(encoding="utf-8-sig")
+        v = versions.all_versions()
+        for label, key in (("梱包明細", "details"), ("ペナラベル", "pena"), ("資材計算", "material")):
+            self.assertIn("%s %s" % (label, v[key]), memo)
+        self.assertIn("コイル梱包ツール %s" % v["app"], memo)
+
     def test_refuses_to_build_inside_the_app(self):
         with self.assertRaises(DF.BuildRefused):
             DF.build(self.src / "dist", root=self.src)

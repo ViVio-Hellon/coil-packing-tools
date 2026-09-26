@@ -409,7 +409,8 @@ def check_existing(mode: str) -> GuardResult:
 
     動いていれば `should_start=False` と、開くべきURLを返す。
 
-    **ただし版が違えば合流しません。** 入れ替えたのに古いプロセスが
+    **ただし版が違えば合流しません**(統合ツールの版と3機能の版の組で比べる。
+    `_stale_versions`)。入れ替えたのに古いプロセスが
     残っていると、ここが「すでに起動しています」と答えて古いほうの
     ブラウザを開き、**新しい版がいつまでも動きません**(画面の版バッジも
     古いままになる)。版が違うときは古いほうを終わらせて、こちらで
@@ -434,44 +435,74 @@ def check_existing(mode: str) -> GuardResult:
         return GuardResult(True, reason="ロックのプロセスは別物だった")
 
     running = str((health or {}).get("version", ""))
-    mine = app_config.version()
-    if running and running != mine:
-        return _replace_stale(mode, info, running, mine)
+    stale = _stale_versions(health or {})
+    if stale:
+        return _replace_stale(mode, info, running or "(不明)", " / ".join(stale))
 
     log.info("すでに起動しています: %s (pid=%s port=%s 版=%s)",
-             mode, info.pid, info.port, running or "(不明)")
+             mode, info.pid, info.port,
+             str((health or {}).get("version_set", "")) or running or "(不明)")
     return GuardResult(False, url=info.url, existing=info,
                        reason="同じアプリが起動中")
 
 
+def _stale_versions(health: dict) -> list:
+    """動いているプロセスと、このファイルの版が違えば、その違い。同じなら空。
+
+    **統合ツールの版と3機能の版の組で比べる**(common/versions.py)。機能の版
+    だけを上げて配ったときも入れ替える ── 統合ツールの版だけで比べると、
+    古いプロセスに合流して、新しい機能の中身がいつまでも動かない。
+    組を答えない古いプロセスは、統合ツールの版だけで比べる。
+    """
+    from common import versions
+
+    running = str(health.get("version", ""))
+    running_set = str(health.get("version_set", ""))
+    if running_set:
+        try:
+            mine = versions.all_versions()
+        except Exception as exc:                    # noqa: BLE001 - 判定で起動を止めない
+            log.warning("機能の版を読めませんでした(統合ツールの版だけで比べます): %s", exc)
+            mine = {versions.APP_KEY: app_config.version()}
+            theirs = {versions.APP_KEY: running}
+        else:
+            theirs = versions.parse_set(running_set)
+        return versions.differences(theirs, mine)
+    if running and running != app_config.version():
+        return [f"{app_config.display_name()} {running} → {app_config.version()}"]
+    return []
+
+
 def _replace_stale(mode: str, info: "LockInfo",
-                   running: str, mine: str) -> GuardResult:
+                   running: str, changes: str) -> GuardResult:
     """動いているのが違う版。**終わらせてから立て直す。**
+
+    `running` は動いているプロセスの統合ツールの版、`changes` は違いの説明
+    (例 `梱包明細 0.13.1 → 0.13.2`)。
 
     処理の途中(取り込みなど)なら終わらせません ── 中途半端なデータを
     残すほうが害が大きいので、そのときは合流して、次の起動に任せます。
     """
-    log.warning("動いているのは別の版です(動作中=%s / ファイル=%s)。"
-                "古いほうを終わらせます", running, mine)
+    log.warning("動いているのは別の版です(%s)。古いほうを終わらせます", changes)
     if not request_shutdown(info.port, info.token):
         log.warning("古い版を終わらせられませんでした。合流します")
         return GuardResult(False, url=info.url, existing=info,
                            stale_version=running,
-                           reason=f"別の版({running})が動いていますが止められません")
+                           reason=f"別の版が動いていますが止められません({changes})")
 
     deadline = time.monotonic() + REPLACE_WAIT_SEC
     while time.monotonic() < deadline:
         if probe_health(info.port, timeout=0.3) is None:
             remove_lock(mode)
-            log.info("古い版(%s)を終わらせました。%s で立て直します", running, mine)
+            log.info("古い版を終わらせました(%s)。新しい版で立て直します", changes)
             return GuardResult(True, stale_version=running,
-                               reason=f"別の版({running})を終わらせました")
+                               reason=f"別の版を終わらせました({changes})")
         time.sleep(0.2)
 
     log.warning("古い版が %.0f秒 で終わりませんでした。合流します", REPLACE_WAIT_SEC)
     return GuardResult(False, url=info.url, existing=info,
                        stale_version=running,
-                       reason=f"別の版({running})が動いています")
+                       reason=f"別の版が動いています({changes})")
 
 
 def request_shutdown(port: int, token: str) -> bool:

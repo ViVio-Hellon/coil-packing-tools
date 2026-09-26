@@ -135,18 +135,57 @@ def install_common(app: Flask) -> None:
         """
         if not (endpoint == "static" or endpoint.endswith(".static")) or "v" in values:
             return
-        values["v"] = static_version(endpoint)
+        values["v"] = static_version(endpoint, values.get("filename"))
 
 
-def static_version(endpoint: str) -> str:
-    """その静的ファイルの版。機能の blueprint なら機能の版。"""
+def static_version(endpoint: str, filename: Optional[str] = None) -> str:
+    """その静的ファイルの版。機能の blueprint なら機能の版、統合画面のものなら統合ツールの版。
+
+    **後ろに中身の指紋を付ける**(`0.13.1-3f2a9c1b`)。版の付いた静的ファイルは
+    長く控えてよい(`immutable`)ので、版を上げ忘れたまま JS や CSS を直すと、
+    一度開いた端末では古いものが使われ続ける。統合ツールの版と機能の版を
+    分けたので、どちらを上げるか迷っても、中身が変われば必ず URL が変わるようにする。
+    """
+    version = ""
+    folder = current_app.static_folder
     if "." in endpoint:
         name = endpoint.split(".", 1)[0]
         bp = current_app.blueprints.get(name)
         conf = getattr(bp, "module_conf", None) or {}
         if conf.get("VERSION"):
-            return str(conf["VERSION"])
-    return str(current_app.config.get("VERSION", ""))
+            version = str(conf["VERSION"])
+        folder = getattr(bp, "static_folder", None) or folder
+    version = version or str(current_app.config.get("VERSION", ""))
+    stamp = _fingerprint(folder, filename) if folder and filename else ""
+    return f"{version}-{stamp}" if stamp else version
+
+
+#: 指紋の控え: 置き場所 → (更新時刻, 大きさ, 指紋)。毎回読み直さない
+_FINGERPRINTS: dict = {}
+
+
+def _fingerprint(folder: str, filename: str) -> str:
+    """静的ファイルの中身の指紋(先頭8文字)。読めなければ空。"""
+    import hashlib
+    import os
+
+    path = os.path.normpath(os.path.join(folder, filename))
+    if not path.startswith(os.path.normpath(folder) + os.sep):
+        return ""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return ""
+    cached = _FINGERPRINTS.get(path)
+    if cached and cached[0] == st.st_mtime_ns and cached[1] == st.st_size:
+        return cached[2]
+    try:
+        with open(path, "rb") as f:
+            stamp = hashlib.sha1(f.read()).hexdigest()[:8]
+    except OSError:
+        return ""
+    _FINGERPRINTS[path] = (st.st_mtime_ns, st.st_size, stamp)
+    return stamp
 
 
 def apply_cache_policy(response: Response) -> None:

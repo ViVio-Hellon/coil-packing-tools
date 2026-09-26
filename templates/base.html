@@ -27,7 +27,24 @@
   <header class="topbar">
     <div class="brand">
       <b class="brand__name">{{ display_name }}</b>
-      <span class="ver" title="統合アプリの版">{{ version_label }}</span>
+      {# 版は**統合ツールの版と3機能の版を分けて**持つ。押すと一覧が出る #}
+      <button class="ver" type="button" id="verBtn" aria-expanded="false"
+              aria-controls="verPanel" title="版の一覧(統合ツールと3機能)">{{ version_label }}</button>
+    </div>
+    <div class="verpanel" id="verPanel" hidden role="dialog" aria-label="版の一覧">
+      <table>
+        <thead><tr><th></th><th>版</th><th>移植元</th></tr></thead>
+        <tbody>
+          <tr class="verpanel__app"><th>{{ display_name }}<small>統合ツール</small></th>
+              <td>{{ version }}</td><td>―</td></tr>
+          {% for tab in tabs %}
+          <tr><th>{{ tab.label }}<small>{{ tab.display_name }}</small></th>
+              <td>{{ tab.version }}</td>
+              <td>{% if tab.ported_from and tab.ported_from.repo %}{{ tab.ported_from.repo.split('/')[-1] }} {{ tab.ported_from.version }}{% else %}―{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p>統合ツールの版は配るたびに上がります。機能の版は、その機能の中身を変えたときだけ上がります。</p>
     </div>
     <div class="topbar__end">
       <span class="conn" id="conn" title="バックエンド接続状態">接続確認中</span>
