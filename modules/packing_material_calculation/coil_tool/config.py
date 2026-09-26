@@ -23,6 +23,7 @@ import logging
 import os
 from pathlib import Path
 
+from common import app_config as _integrated_app_config
 from common import logging_utils as _common_logging
 from . import app_config
 
@@ -35,8 +36,16 @@ APP_NAME = "CoilMaterialTool"
 # ------------------------------------------------------------------
 # パス設定
 # ------------------------------------------------------------------
-# プロジェクトルート (このファイルの2つ上の階層)
+# 機能のフォルダ (このファイルの2つ上の階層。統合版では modules\\packing_material_calculation)
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# **アプリのフォルダ** = 統合アプリの根(`Start.vbs` があるフォルダ)。
+# 利用者にとっての「アプリのフォルダ」はここ。設定で置き場所を相対で書いたときの
+# 基準(`resolve_dir`)と、共有に届かない端末で写しを置く場所はこちらを使う。
+# 移植元では `BASE_DIR` と同じだったが、統合版では `BASE_DIR` が機能のフォルダ
+# (`modules\\<機能>`)になったため分けた(統合版で直した。相対で書いた設定が
+# 黙って別の場所を指していた)。`BASE_DIR` は説明書など機能の中身の置き場所にだけ使う
+APP_DIR = Path(_integrated_app_config.APP_ROOT)
 
 # 手元の作業用 SQLite。取り込んだマスタの写しと、このツールが書くもの
 # (チェックリスト・発注履歴)が入る
@@ -52,7 +61,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("COIL_TOOL_DB_PATH",
                               str(app_config.local_dir("data") / "coil_tool.db")))
 # 旧い置き場所。移し替えの元としてだけ見る
-LEGACY_DB_PATH = BASE_DIR / "data" / "coil_tool.db"
+LEGACY_DB_PATH = APP_DIR / "data" / "coil_tool.db"
 
 # ログ出力先。**統合版では3機能で1つのフォルダ**
 # (`%LOCALAPPDATA%\\CoilPackingTools\\logs`。`common/logging_utils.py`)。
@@ -63,7 +72,7 @@ LOG_DIR = Path(os.environ.get("COIL_TOOL_LOG_DIR",
 # 設定画面の値を保存する JSON(VBA のレジストリ `SaveSetting` の代替)
 USER_CONFIG_PATH = Path(os.environ.get("COIL_TOOL_CONFIG_PATH",
                                        str(app_config.local_dir("data") / "user_config.json")))
-LEGACY_USER_CONFIG_PATH = BASE_DIR / "data" / "user_config.json"
+LEGACY_USER_CONFIG_PATH = APP_DIR / "data" / "user_config.json"
 
 # ------------------------------------------------------------------
 # 取り込み元の置き場所(既定値)
@@ -111,7 +120,7 @@ LOT_DB_FILES = {
 # 統合版では統合アプリのフォルダの直下 `export\\packing_material_calculation\\`
 DEFAULT_EXPORT_DIR = Path(os.environ.get(
     "COIL_TOOL_EXPORT_DIR",
-    str(BASE_DIR.parent.parent / "export" / "packing_material_calculation")))
+    str(APP_DIR / "export" / "packing_material_calculation")))
 
 
 # ------------------------------------------------------------------
@@ -125,7 +134,7 @@ def resolve_dir(text: str) -> Path:
         絶対  `\\サーバ\共有\…` / `C:\data\…` / `/mnt/share/…`
               打たれたまま使う
         相対  `data\src` / `..\共有` / `src`
-              **アプリのフォルダから**たどる(`BASE_DIR`)
+              **アプリのフォルダから**たどる(`APP_DIR`。統合アプリの根)
 
     相対を「いまの作業フォルダ」から見ないのが要点。作業フォルダは
     どこから起動したかで変わるので、同じ設定でも端末ごとに違う場所を
@@ -141,7 +150,7 @@ def resolve_dir(text: str) -> Path:
     path = Path(trimmed).expanduser()
     if path.is_absolute():
         return path
-    return BASE_DIR / path
+    return APP_DIR / path
 
 
 def is_relative_setting(text: str) -> bool:

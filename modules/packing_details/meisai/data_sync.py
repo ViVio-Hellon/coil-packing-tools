@@ -65,7 +65,9 @@ def find_sources(lot_dir: Optional[Path] = None,
     )
     for files, primary in pairs:
         for table, filename in files.items():
-            for base in (primary, config.BASE_DIR):
+            # 次点はアプリのフォルダ(統合アプリの根)。共有に届かない端末は
+            # そこに写しを置く(統合版で直した: 機能のフォルダを見ていた)
+            for base in (primary, config.APP_DIR):
                 path = source_db.find(base, filename)
                 if path is not None:
                     found[table] = path

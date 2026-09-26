@@ -46,7 +46,7 @@ def test_作業用DBと設定はローカル領域にある():
 
 def test_アプリ本体の下に作業用のものを置かない():
     """本体は共有フォルダに置かれうる。**書くものを本体の隣に置かない。**"""
-    base = config.BASE_DIR.resolve()
+    base = config.APP_DIR.resolve()          # 統合版: アプリのフォルダ全体(機能のフォルダを含む)
     for path in (config.DB_PATH, config.USER_CONFIG_PATH, config.LOG_DIR):
         assert base not in path.resolve().parents, f"{path} が本体の下にあります"
 

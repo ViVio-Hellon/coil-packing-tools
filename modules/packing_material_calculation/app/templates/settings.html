@@ -351,8 +351,13 @@
   出どころにする ── 2回取りに行くと、片方だけ古い、が起きる。
 #}
 <script>window.MASTER_FRAME = {{ master | tojson }};</script>
+{# **版を付けない URL で読む**(統合版で直した)。settings.js が `./master.js` として
+   同じものを import する。ES モジュールは URL ごとに別物になるので、ここだけ `?v=` が付くと
+   master.js が2つでき、認証したあとの切り替え(settings.js → refresh)が、表を出している
+   ほうに届かなかった(マスタ管理が「見るだけ」のまま)。版なしの静的ファイルは no-cache
+   (使う前に必ず確かめる)なので、古いものは使われない #}
 <script type="module">
-  import { start } from "{{ url_for('material.static', filename='js/views/master.js') }}";
+  import { start } from "{{ url_for('material.static', filename='js/views/master.js', v=None) }}";
   start(window.MASTER_FRAME);
 </script>
 <script type="module" src="{{ url_for('material.static', filename='js/views/settings.js') }}"></script>

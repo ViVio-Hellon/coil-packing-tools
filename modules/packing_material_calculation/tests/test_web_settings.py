@@ -58,7 +58,9 @@ def test_relative_path_resolves_from_app_dir(client):
     master = next(f for f in view["fields"] if f["key"] == config.KEY_MASTER_DB_DIR)
     assert master["relative"] is True
     # いまの作業フォルダではなく、アプリのフォルダから見る
-    assert master["resolved"] == str(config.BASE_DIR / "data" / "src")
+    # 統合版: アプリのフォルダ = 統合アプリの根(Start.vbs がある所)。機能のフォルダではない
+    assert master["resolved"] == str(config.APP_DIR / "data" / "src")
+    assert config.APP_DIR != config.BASE_DIR
 
 
 def test_probe_reports_missing_folder(client, sandbox):

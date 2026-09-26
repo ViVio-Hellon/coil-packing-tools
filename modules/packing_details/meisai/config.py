@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from common import app_config as _integrated_app_config
 from common import logging_utils as _common_logging
 from . import app_config
 
@@ -25,8 +26,16 @@ APP_NAME = "PackingDetails"
 # ------------------------------------------------------------------
 # パス設定
 # ------------------------------------------------------------------
-# プロジェクトルート (このファイルの2つ上の階層)
+# 機能のフォルダ (このファイルの2つ上の階層。統合版では modules\\packing_details)
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# **アプリのフォルダ** = 統合アプリの根(`Start.vbs` があるフォルダ)。
+# 利用者にとっての「アプリのフォルダ」はここ。設定で置き場所を相対で書いたときの
+# 基準(`resolve_dir`)と、共有に届かない端末で写しを置く場所はこちらを使う。
+# 移植元では `BASE_DIR` と同じだったが、統合版では `BASE_DIR` が機能のフォルダ
+# (`modules\\<機能>`)になったため分けた(統合版で直した。相対で書いた設定が
+# 黙って別の場所を指していた)。`BASE_DIR` は説明書など機能の中身の置き場所にだけ使う
+APP_DIR = Path(_integrated_app_config.APP_ROOT)
 
 # 手元の作業用DB。**端末ごとに1つ**。
 #
@@ -125,7 +134,7 @@ HISTORY_SEND_INTERVAL_SEC = 300
 # ダウンロードはしない ── ファイルに書いて、場所を出す(現場の指定)
 # 統合版では統合アプリのフォルダの直下 `export\\packing_details\\`(機能ごとに分ける)
 EXPORT_DIR = Path(os.environ.get("PACKING_DETAILS_EXPORT_DIR",
-                                 str(BASE_DIR.parent.parent / "export" / "packing_details")))
+                                 str(APP_DIR / "export" / "packing_details")))
 
 # 仕掛台帳の3ファイル(手元のテーブル名 → 取り込み元のファイル名)。
 # 拡張子違い(.db)も `source_db.find` が拾う。
@@ -219,7 +228,7 @@ def resolve_dir(text: str) -> Path:
         絶対  `\\サーバ\共有\…` / `C:\data\…` / `/mnt/share/…`
               打たれたまま使う
         相対  `data\src` / `..\共有`
-              **アプリのフォルダから**たどる(`BASE_DIR`)
+              **アプリのフォルダから**たどる(`APP_DIR`。統合アプリの根)
 
     相対を「いまの作業フォルダ」から見ないのが要点。作業フォルダは
     どこから起動したかで変わるので、同じ設定でも端末ごとに違う場所を
@@ -231,7 +240,7 @@ def resolve_dir(text: str) -> Path:
     path = Path(trimmed).expanduser()
     if path.is_absolute():
         return path
-    return BASE_DIR / path
+    return APP_DIR / path
 
 
 def is_relative_setting(text: str) -> bool:
