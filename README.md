@@ -78,6 +78,7 @@ modules/
   packing_material_calculation/     資材計算   (coil_tool/ + app/ + config/ + docs/ + tests/)
 tests/                              統合の試験(タブ・入口・トークン・心拍・停止・起動ファイル)
 tools/smoke_shell.py                起動から停止までの通し(手動)
+tools/e2e_scenarios.py              3機能を現場と同じように使う通し(一連の流れ・交互・放置。手動)
 scripts/make_dist.py                配布用フォルダを作る
 docs/統合設計.md                    調査・比較・採用した実装・影響・テスト
 ```
@@ -144,6 +145,7 @@ python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペ�
 python -m pytest modules/packing_material_calculation/tests              # 資材計算   432
 python -m pytest tests                                                   # 統合       174
 python tools/smoke_shell.py                                              # 通し(配布前に一度)
+python tools/e2e_scenarios.py                                           # 3機能の一連の流れ・交互・放置(約20分。--quick で約9分)
 python tools/print_edge_check.py                                         # 印刷の端 5mm(紙面を直したら)
 ```
 
