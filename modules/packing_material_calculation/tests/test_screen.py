@@ -102,6 +102,28 @@ def test_途切れて戻ってきた画面は締め出さない():
     assert screen.holder().screen == "A"
 
 
+def test_裏に回った合図では空いた符牒を継がない():
+    """【統合版】タブを閉じると「閉じた」のあとに「裏に回った」が届くことがある。
+
+    裏の合図で継ぐと、閉じたタブが受付を持ったまま残り、開き直した画面が
+    断られる(通し試験で見つかった)。取り上げられてはいないので True を返す。
+    """
+    screen.claim("A")
+    screen.release("A")            # 閉じた
+    assert screen.beat("A", hidden=True) is True
+    assert screen.holder() is None
+    assert screen.claim("B").ok is True
+
+
+def test_裏から前に戻った画面は継ぐ():
+    """裏のあいだに空いた画面が前に戻ったら、そのときの心拍で継ぐ。"""
+    screen.claim("A")
+    screen.release("A")
+    screen.beat("A", hidden=True)
+    assert screen.beat("A", hidden=False) is True
+    assert screen.holder().screen == "A"
+
+
 def test_符牒が無ければ断る():
     assert screen.claim("").ok is False
     assert screen.claim("   ").reason == screen.REFUSE_NO_SCREEN
@@ -207,6 +229,16 @@ def test_閉じた合図で符牒を手放す(client):
     client.post("/api/screen/claim", json={"screen": "A"})
     client.post("/api/alive", json={"screen": "A", "closing": True})
     assert screen.holder() is None
+
+
+def test_閉じた合図のあとに裏の合図が届いても開き直せる(client):
+    """【統合版】統合画面の中(iframe)では、閉じた合図が裏の合図より先に届く。"""
+    client.post("/api/screen/claim", json={"screen": "A"})
+    client.post("/api/alive", json={"screen": "A", "closing": True})
+    client.post("/api/alive", json={"screen": "A", "hidden": True})
+    assert screen.holder() is None
+    r = client.post("/api/screen/claim", json={"screen": "B"})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
 
 
 def test_取り上げられた画面が閉じても持ち主は残る(client):

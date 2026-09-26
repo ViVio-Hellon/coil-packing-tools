@@ -696,8 +696,10 @@ _HIDE = """() => {
   document.dispatchEvent(new Event('freeze'));
 }"""
 _SHOW = """() => {
-  for (const [k, v] of [['visibilityState', 'visible'], ['hidden', false]])
-    Object.defineProperty(document, k, {configurable: true, get: () => v});
+  // 書き換えを外して、ブラウザ本来の値に戻す(残すと、閉じるときの「裏に回った」まで
+  // 「前に戻った」として送られてしまう)
+  delete document.visibilityState;
+  delete document.hidden;
   document.dispatchEvent(new Event('resume'));
   document.dispatchEvent(new Event('visibilitychange'));
   window.dispatchEvent(new Event('focus'));
@@ -803,6 +805,15 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
 
     report = note.get("report")
     if report is not None and not report.is_closed():
+        # 帳票の別タブを開いたまま統合画面を閉じてしまい、すぐ開き直す
+        sh.page.close(run_before_unload=True)
+        time.sleep(1.5)
+        sh.page = ctx.new_page()
+        sh.page.goto(app.base + "/?t=" + app.token)
+        wait_until(lambda: all(sh.frame(k) for k in ("details", "pena", "material")), 20)
+        sh.page.wait_for_timeout(4000)
+        trouble = sh.trouble()
+        check("統合画面を閉じてすぐ開き直しても、3機能とも断られない", not trouble, trouble)
         sh.page.close(run_before_unload=True)
         ok = _hold(app, minutes["report"], "d. 統合画面を閉じ、帳票の別タブだけで放置")
         check("放置d(帳票の別タブだけ): サーバが終わらない", ok, "")
