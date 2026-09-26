@@ -115,6 +115,25 @@ def install_common(app: Flask) -> None:
             return error_json("bad_host", "このアドレスからは利用できません", 400)
         return None
 
+    @app.before_request
+    def _same_origin_writes():                  # noqa: ANN202 - Flaskのフック
+        """書く要求(GET 以外)は、このアプリの画面からだけ受ける。
+
+        **本ツール以外のタブ(別のサイト・同じ PC の別のアプリ)からの送信を断る。**
+        機能ごとの確認は梱包明細・ペナラベルにしか無く、統合画面と資材計算の心拍の
+        受け口は、別のページからの送信も受けていた(トークンの要らない口なので、
+        「画面が開いている」と見せかけて自動終了を止められた)。ブラウザが付ける
+        `Sec-Fetch-Site` が same-origin / none / 付いていない ものだけを通す。
+        同じ PC の別のポート(旧い単体版など)は same-site なので断る。
+        """
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
+        if not same_origin_ok():
+            current_app.logger.warning("別のページからの送信を拒否: %s %s",
+                                       request.headers.get("Sec-Fetch-Site"), request.path)
+            return error_json("cross_origin", "別のページからは利用できません", 403)
+        return None
+
     @app.after_request
     def _headers(response):                     # noqa: ANN202 - Flaskのフック
         # CORS ヘッダは**一切返さない**(返さないことが対策)

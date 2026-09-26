@@ -356,7 +356,10 @@ def _shell_blueprint() -> Blueprint:
         if reason and reason not in ("timer", "focus"):
             who = "統合画面" if not client or client.startswith("shell-") else f"別タブ {client}"
             log.info("%sの心拍: %s (%s)", who, reason, state or "-")
-        watching = idle_exit.signal(client=client, leaving=leaving, hidden=hidden)
+        # 同じタブの前の名乗り(タブが捨てられて読み直されたとき。`IdleWatch.forget`)
+        replaces = str(body.get("replaces", ""))
+        watching = idle_exit.signal(client=client, leaving=leaving, hidden=hidden,
+                                    replaces=replaces)
         return jsonify({"ok": True, "pid": os.getpid(), "watching": watching})
 
     @bp.post("/api/shutdown")

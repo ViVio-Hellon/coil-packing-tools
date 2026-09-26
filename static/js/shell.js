@@ -281,6 +281,12 @@
   // ---------------------------------------------------------- 開始
   health();
   setInterval(health, S.healthPollMs || 15000);
-  alive({ reason: "open" });
+  // 同じタブの前の名乗り。ブラウザが裏のタブを捨てて読み直したとき、前の名乗りは
+  // 閉じた合図を出せないまま「裏に回ったまま」で残る(全部閉じても終わらなくなる)。
+  // 開いたときに言っておけば、サーバが忘れる(`IdleWatch.forget`)
+  var PREV_KEY = "cpt.shell.client", previous = "";
+  try { previous = sessionStorage.getItem(PREV_KEY) || ""; sessionStorage.setItem(PREV_KEY, CLIENT); }
+  catch (e) { previous = ""; }
+  alive({ reason: "open", replaces: previous });
   setInterval(function () { alive({ reason: "timer" }); }, S.alivePollMs || 20000);
 })();

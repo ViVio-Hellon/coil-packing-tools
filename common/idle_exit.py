@@ -239,6 +239,25 @@ class IdleWatch:
                         "leaving": s.leaving_at is not None}
                     for k, s in self._screens.items()}
 
+    def forget(self, client: str) -> bool:
+        """その画面をすぐ忘れる(**同じタブで開き直された**とき)。忘れたら True。
+
+        ブラウザは裏に回したタブを休ませ、長くなると**捨てる**(Chrome のメモリセーバー・
+        Edge のタブのスリープ)。捨てるときは何の合図も来ないので、その画面は「裏に
+        回ったまま」で残り、裏の画面は心拍が途切れても数え続けるため、あとで全部を
+        閉じても自分で終わらなかった(通し試験で見つかった)。戻ってきたタブは読み直され、
+        新しい名乗りで開く。そのとき前の名乗りを言ってくるので、ここで忘れる。
+        名乗らない画面(`ANONYMOUS`)は忘れない(3機能の iframe が共有している)。
+        """
+        client = _client_name(client)
+        if not client:
+            return False
+        with self._lock:
+            gone = self._screens.pop(client, None) is not None
+        if gone:
+            log.info("画面(%s)は同じタブで開き直されたので、数えるのをやめます", client)
+        return gone
+
     def leaving(self, client: str = ANONYMOUS) -> None:
         """画面が閉じた(`sendBeacon`)。猶予のあとでその画面を忘れる。
 
@@ -404,17 +423,20 @@ def get() -> Optional[IdleWatch]:
 
 
 def signal(*, client: str = ANONYMOUS, leaving: bool = False,
-           hidden: Optional[bool] = None) -> bool:
+           hidden: Optional[bool] = None, replaces: str = "") -> bool:
     """画面からの合図(心拍・裏に回った・閉じた)を見張りへ渡す。
 
     統合画面の外枠とペナラベルの受け口(`/api/alive`)が使う。見張りが
     まだ無ければ何もせず False。
 
     **「裏に回った」は閉じた合図を取り消さない**(`beat` の説明を参照)。
+    `replaces` は同じタブの前の名乗り(開き直したとき)。それは忘れる(`forget`)。
     """
     watch = _watch
     if watch is None:
         return False
+    if replaces and _client_name(replaces) != _client_name(client):
+        watch.forget(replaces)
     if leaving:
         watch.leaving(client)
     else:

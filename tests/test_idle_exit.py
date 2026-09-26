@@ -212,6 +212,49 @@ class ScreensTest(unittest.TestCase):
         self.assertTrue(watch.screens()["pena-1"]["leaving"])
 
 
+class DiscardedTabTest(unittest.TestCase):
+    """ブラウザが裏のタブを捨てて、あとで読み直した(本ツール以外のタブが開いているとき)。
+
+    捨てるときは何の合図も来ないので、前の名乗りは「裏に回ったまま」で残る。
+    読み直した画面が前の名乗りを言ってくれば忘れる。言わないと全部閉じても終わらない。
+    """
+
+    def test_同じタブで開き直したら前の名乗りを忘れる(self):
+        watch = _watch()
+        watch.beat(hidden=False, client="shell-old")
+        watch.beat(hidden=True, client="shell-old")        # 裏に回った → 捨てられた
+        watch.beat(hidden=False, client="shell-new")        # 読み直した
+        self.assertTrue(watch.forget("shell-old"))
+        self.assertNotIn("shell-old", watch.screens())
+        ScreensTest._close(watch, "shell-new")
+        self.assertEqual(watch.overdue(), "画面が閉じられました")
+
+    def test_忘れないと全部閉じても終わらない(self):
+        """直す前の姿(裏の画面は心拍が途切れても数え続ける)。"""
+        watch = _watch()
+        watch.beat(hidden=True, client="shell-old")
+        watch.beat(hidden=False, client="shell-new")
+        ScreensTest._close(watch, "shell-new")
+        self.assertIsNone(watch.overdue())
+
+    def test_名乗らない画面は忘れない(self):
+        watch = _watch()
+        watch.beat(hidden=False)
+        self.assertFalse(watch.forget(""))
+        self.assertIn("", watch.screens())
+
+    def test_合図に前の名乗りを添えられる(self):
+        idle_exit.reset()
+        self.addCleanup(idle_exit.reset)
+        watch = idle_exit.install(lambda: None, lambda: False, tick_sec=3600)
+        idle_exit.signal(client="shell-old", hidden=True)
+        idle_exit.signal(client="shell-new", hidden=False, replaces="shell-old")
+        self.assertEqual(set(watch.screens()), {"shell-new"})
+        # 自分自身を言ってきても消さない
+        idle_exit.signal(client="shell-new", hidden=False, replaces="shell-new")
+        self.assertIn("shell-new", watch.screens())
+
+
 class SingletonTest(unittest.TestCase):
     """見張りはプロセスに1つ。3機能の `idle_exit` は同じもの。"""
 

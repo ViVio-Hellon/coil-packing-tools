@@ -115,6 +115,37 @@ class PenaFieldFeedbackTest(unittest.TestCase):
         self.assertEqual(self.client.get("/pena/api/progress").status_code, 403, "トークンが要る")
 
 
+class OtherTabsTest(unittest.TestCase):
+    """本ツール以外のタブ(別のサイト・同じ PC の別のアプリ)からの送信は断る(1.0.7)。
+
+    以前は統合画面と資材計算の心拍の受け口が、別のページからの送信も受けていた。
+    """
+
+    def setUp(self):
+        self.client = _make_app(self).test_client()
+
+    def test_writes_from_other_pages_are_refused(self):
+        for site in ("cross-site", "same-site"):
+            for path, body in (("/api/alive", {"client": "evil"}),
+                               ("/material/api/alive", {"closing": True}),
+                               ("/details/api/alive", {"leaving": True}),
+                               ("/pena/api/screen/release", {"screenId": "x"})):
+                with self.subTest(site=site, path=path):
+                    res = self.client.post(path, json=body, headers={"Sec-Fetch-Site": site})
+                    self.assertEqual(res.status_code, 403)
+
+    def test_own_pages_still_pass(self):
+        for site in ("same-origin", "none", None):
+            headers = {"Sec-Fetch-Site": site} if site else {}
+            with self.subTest(site=site):
+                res = self.client.post("/api/alive", json={"client": "shell-1"}, headers=headers)
+                self.assertEqual(res.status_code, 200)
+
+    def test_reading_is_not_affected(self):
+        res = self.client.get("/api/health", headers={"Sec-Fetch-Site": "cross-site"})
+        self.assertEqual(res.status_code, 200)
+
+
 class PenaLogLevelTest(unittest.TestCase):
     def tearDown(self):
         from common import logging_utils

@@ -45,10 +45,12 @@
   }
 
   // ふつうの心拍
-  function alive(reason) {
+  function alive(reason, extra) {
+    var b = { reason: reason };
+    Object.keys(extra || {}).forEach(function (k) { b[k] = extra[k]; });
     try {
       fetch(URL_ALIVE, {
-        method: "POST", cache: "no-store", body: body({ reason: reason }),
+        method: "POST", cache: "no-store", body: body(b),
         headers: { "Content-Type": "application/json" }
       }).catch(function () { /* 届かなければ次の心拍で */ });
     } catch (e) { /* 同上 */ }
@@ -69,7 +71,11 @@
     } catch (e) { /* 届かなくても次の心拍で直る */ }
   }
 
-  alive("open");
+  // 同じタブの前の名乗り(ブラウザが裏のタブを捨てて読み直したとき。shell.js と同じ)
+  var PREV_KEY = "cpt.tab." + attr("data-key", "page") + ".client", previous = "";
+  try { previous = sessionStorage.getItem(PREV_KEY) || ""; sessionStorage.setItem(PREV_KEY, CLIENT); }
+  catch (e) { previous = ""; }
+  alive("open", { replaces: previous });
   setInterval(function () { alive("timer"); }, ALIVE_MS);
   document.addEventListener("visibilitychange", function () {
     if (state() === "visible") { alive("foreground"); } else { signal({ reason: "hidden" }); }

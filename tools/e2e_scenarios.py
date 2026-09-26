@@ -26,7 +26,9 @@
       ページの JavaScript を止める)
    c. スリープ(サーバのプロセスも止め、ブラウザも止める)
    d. 統合画面を閉じ、帳票の別タブだけを残して放置
+   f. 本ツール以外のタブを開き、本ツールのタブが裏で捨てられる → 戻る(読み直し)
    e. 全部閉じて放置 → 自分で終わる → 翌朝と同じく開き直す(残るもの・消えるもの)
+      (f で捨てられた前の画面が残っていても、自分で終わること)
    放置のあと、3機能とも「断られた」「接続なし」「開き直してください」が出ず、
    そのまま操作を続けられること
 
@@ -832,6 +834,36 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
         check("放置d: 統合画面を開き直すと3機能とも使える", not trouble, trouble)
         d = sh.tab("details")
         check("放置d: 梱包明細は開いていたロットのまま", text(d, "#lotNo") == "A123456", text(d, "#lotNo"))
+
+    # f. 本ツール以外のタブを開いて、本ツールのタブを裏へ。長く裏にあるとブラウザは
+    #    タブを**捨てる**(Chrome のメモリセーバー・Edge のタブのスリープ)。捨てるときは
+    #    何の合図も出さない。戻ると読み直される
+    other = ctx.new_page()
+    other.set_content("<h1>別のサイト</h1><script>setInterval(() => { let x = 0; "
+                      "for (let i = 0; i < 2e5; i++) x += i; }, 200)</script>")
+    for fr in sh.page.frames:
+        try:
+            fr.evaluate(_HIDE)
+        except Exception:                          # noqa: BLE001
+            pass
+    time.sleep(1.5)
+    for fr in sh.page.frames:                      # 捨てる = もう何も送れない
+        try:
+            fr.evaluate("() => { navigator.sendBeacon = () => true;"
+                        " window.fetch = () => new Promise(() => {}); }")
+        except Exception:                          # noqa: BLE001
+            pass
+    with Frozen([sh.page], hide=False):
+        ok = _hold(app, minutes["hidden"], "f. 本ツールのタブが裏で捨てられる")
+    check("放置f(ほかのタブを開き、裏のタブが捨てられる): サーバが終わらない", ok, "")
+    sh.page.reload()
+    wait_until(lambda: all(sh.frame(k) for k in ("details", "pena", "material")), 20)
+    sh.page.wait_for_timeout(3000)
+    trouble = [] if sh.ready(15) else sh.trouble()
+    check("放置f: 戻る(読み直される)と3機能とも続けて使える", not trouble, trouble)
+    d = sh.tab("details")
+    check("放置f: 梱包明細は開いていたロットのまま", text(d, "#lotNo") == "A123456", text(d, "#lotNo"))
+    other.close()
 
     # e. 全部閉じて放置 → 自分で終わる → 翌朝と同じく開き直す
     for pg in list(ctx.pages):
