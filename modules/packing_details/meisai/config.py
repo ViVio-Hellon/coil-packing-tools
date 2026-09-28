@@ -183,6 +183,7 @@ KEY_QA_MARK = "qa_mark"
 KEY_ADMIN_PASSWORD = "admin_password"
 KEY_SHARED_DIR = "shared_dir"           # 共有の設定フォルダ(端末ごとに差し替え)
 KEY_SHARED_CACHE = "shared_cache"       # 共有から最後に読んだ値の写し
+KEY_EXPORT_DIR = "export_dir"           # CSV の出力先(マスタ管理・明細の履歴)
 
 # 管理者パスワードの既定(一度も変えていない端末で通る値)。
 #
@@ -276,6 +277,20 @@ def konpo_db_dir() -> Path:
     if isinstance(configured, str) and configured.strip():
         return resolve_dir(configured)
     return KONPO_DB_DIR
+
+
+def export_dir() -> Path:
+    """CSV の出力先(マスタ管理・明細の履歴)。設定画面の値を優先する。
+
+    既定はアプリのフォルダの `export\\packing_details\\`(`EXPORT_DIR`)。設定の
+    「置き場所・取り込み」で変えられる(現場の指摘: 出力先も設定できるように)。
+    相対で書くとアプリのフォルダからたどる(ほかの置き場所と同じ)。
+    """
+    from . import user_settings
+    configured = user_settings.get(KEY_EXPORT_DIR)
+    if isinstance(configured, str) and configured.strip():
+        return resolve_dir(configured)
+    return EXPORT_DIR
 
 
 def ensure_dirs() -> None:

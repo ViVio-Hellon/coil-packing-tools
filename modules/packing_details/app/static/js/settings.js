@@ -61,6 +61,7 @@ export function wire(given) {
   $("btnLotSave").addEventListener("click", () => saveFolder("lot"));
   $("btnKonpoSave").addEventListener("click", () => saveFolder("konpo"));
   $("btnShareSave").addEventListener("click", saveShareDir);
+  $("btnExportSave").addEventListener("click", saveExportDir);
   $("btnQaSave").addEventListener("click", () => saveQa(false));
   $("btnQaReset").addEventListener("click", () => saveQa(true));
   $("setQaValue").addEventListener("input", countQa);
@@ -102,7 +103,7 @@ export async function open({ tab = "", focus = "" } = {}) {
                     "setAdminConfirm", "setSharePassword", "distPassword"]) {
     $(id).value = "";
   }
-  for (const id of ["setLotResult", "setKonpoResult", "setShareNote", "setQaNote",
+  for (const id of ["setLotResult", "setKonpoResult", "setExportResult", "setShareNote", "setQaNote",
                     "setAdminNote", "distNote"]) {
     showNote(id, "");
   }
@@ -181,6 +182,7 @@ function renderLocal(body, { fill = false } = {}) {
     $("setLotDir").value = body.lot_db_dir_setting || "";
     $("setKonpoDir").value = body.konpo_db_dir_setting || "";
     $("setShareDir").value = body.share_setting || "";
+    $("setExportDir").value = body.export_dir_setting || "";
   }
   // **このフォルダに何を探しているか。** 道だけ出しても、そこへ
   // 何を置けばよいかが分からない
@@ -194,6 +196,8 @@ function renderLocal(body, { fill = false } = {}) {
   $("setKonpoDir").placeholder = `空なら既定: ${body.konpo_db_dir_default}`;
   $("setShareDir").placeholder = `空なら既定: ${body.share_default}`;
   $("setShareNow").textContent = `いま見ている場所: ${body.share_dir}`;
+  $("setExportNow").textContent = `いまの出力先: ${body.export_dir}`;
+  $("setExportDir").placeholder = `空なら既定: ${body.export_dir_default}`;
   $("setPaths").textContent = `手元のDB: ${body.db_path}\nログ: ${body.log_dir}`;
   $("setAdminMin").textContent = `${body.admin_min_length}文字以上`;
   qaMax = body.qa_mark_max || qaMax;
@@ -333,6 +337,22 @@ async function saveFolder(kind) {
     renderStamps(body.stamps, next.konpo_tables, "setKonpoStamps");
   } catch (err) {
     if (refused(err, f.note) && err.field === "value") $(f.input).focus();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** CSV の出力先。**書けるかをサーバが確かめてから**保存する。取り込みはしない */
+async function saveExportDir() {
+  const button = $("btnExportSave");
+  button.disabled = true;
+  showNote("setExportResult", "");
+  try {
+    const saved = await api.post("/api/settings", { key: "export_dir", value: $("setExportDir").value });
+    showNote("setExportResult", saved.note || "保存しました。");
+    renderLocal(await api.get("/api/settings"));
+  } catch (err) {
+    if (refused(err, "setExportResult") && err.field === "value") $("setExportDir").focus();
   } finally {
     button.disabled = false;
   }

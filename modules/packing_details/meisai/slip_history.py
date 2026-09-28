@@ -38,7 +38,7 @@
 - 紙面を作り直す(`load_slips` → `report.render_history`)… 履歴に残した
   中身のとおりに明細票を組み直す(読むだけ。履歴は書き換えない)
 - CSV に書き出す(`export_csv`)… **ブラウザのダウンロードはしない**(現場の
-  指定)── `config.EXPORT_DIR` にファイルを書き、その場所を出すだけ。
+  指定)── `config.export_dir()` にファイルを書き、その場所を出すだけ。
   **Excel などをこちらから開くこともしない**(開くのは使う人がすること。
   現場の指定)。UTF-8 の BOM 付きで、副番 `1-10` が日付に化けないように
   してある
@@ -696,7 +696,7 @@ def status(conn: sqlite3.Connection, *, timeout: float = 3.0) -> dict[str, Any]:
         "shared_path": str(path),
         "keep_years": config.HISTORY_KEEP_YEARS,
         "cutoff": cutoff()[:10],
-        "export_dir": str(config.EXPORT_DIR),
+        "export_dir": str(config.export_dir()),
         "shared_count": None, "shared_coils": None,
         "shared_oldest": "", "shared_newest": "", "shared_problem": "",
     }
@@ -918,7 +918,7 @@ def export_csv(date_from: str, date_to: str, lot_no: str = "", fuban: str = "", 
     except (shared_settings.SharedError, sqlite3.Error, OSError) as exc:
         raise HistoryError(f"共有の履歴を開けません: {exc}") from exc
 
-    folder = folder or config.EXPORT_DIR
+    folder = folder or config.export_dir()
     try:
         folder.mkdir(parents=True, exist_ok=True)
     except OSError as exc:

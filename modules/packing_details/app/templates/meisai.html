@@ -212,6 +212,19 @@
         <p class="set-note" id="setKonpoResult" role="status" hidden></p>
       </section>
 
+      {#- CSV の出力先(マスタ管理・明細の履歴の「CSV」)。**書く場所**なので、保存するときに
+          書けるかを確かめる。取り込みはしない(現場の指摘: 出力先も設定できるように) -#}
+      <section class="set-box" aria-labelledby="setExportHead">
+        <div class="set-box-head" id="setExportHead">CSVの出力先</div>
+        <span class="stamp files">マスタ管理・明細の履歴の「CSV」がここへ書き出します</span>
+        <input type="text" id="setExportDir" spellcheck="false" autocomplete="off" aria-labelledby="setExportHead">
+        <span class="stamp" id="setExportNow"></span>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnExportSave">保存</button>
+        </div>
+        <p class="set-note" id="setExportResult" role="status" hidden></p>
+      </section>
+
       {#- 共有(全ライン)。右上の文字・マスタ管理・履歴がここを見る。刷る文字の
           出どころが変わるので**管理者パスワードで守る** -#}
       <section class="set-box set-box-shared" id="setShareBox" aria-labelledby="setShareHead">

@@ -32,6 +32,7 @@ bp = Blueprint("settings", __name__)
 EDITABLE = {
     config.KEY_LOT_DB_DIR: "仕掛台帳のフォルダ",
     config.KEY_KONPO_DB_DIR: "梱包課共有の仕掛フォルダ",
+    config.KEY_EXPORT_DIR: "CSVの出力先",
 }
 
 
@@ -56,6 +57,9 @@ def _local_state() -> dict:
         "lot_db_dir_default": str(config.LOT_DB_DIR),
         "konpo_db_dir_default": str(config.KONPO_DB_DIR),
         "auto_import": user_settings.auto_import_enabled(),
+        "export_dir": str(config.export_dir()),
+        "export_dir_setting": user_settings.get(config.KEY_EXPORT_DIR, "") or "",
+        "export_dir_default": str(config.EXPORT_DIR),
         "db_path": str(config.DB_PATH),
         "log_dir": str(config.LOG_DIR),
         # **どのフォルダに何を探しているか**を欄ごとに分けて渡す。
@@ -252,6 +256,19 @@ def write_settings():
         resolved = None
         note = "既定の置き場所に戻しました。"
 
+    if key == config.KEY_EXPORT_DIR:
+        # **書く場所**なので、書けるかをその場で確かめる。取り込みは要らない
+        target = resolved or config.EXPORT_DIR
+        problem = _writable_problem(target)
+        if problem:
+            return jsonify(error_body("not_writable", problem, "value")), 400
+        if not user_settings.save(key, value):
+            return jsonify(error_body(
+                "write_failed", "設定ファイルに書けませんでした。")), 500
+        return jsonify({"ok": True, "note": (note + "\n" if note else "")
+                        + f"CSV はここに書き出します: {target}",
+                        "resolved": str(target)})
+
     if not user_settings.save(key, value):
         return jsonify(error_body(
             "write_failed", "設定ファイルに書けませんでした。")), 500
@@ -266,6 +283,18 @@ def write_settings():
         "missing": missing,
         "stamps": [s.to_dict() for s in data_sync.stamps(conn)],
     })
+
+
+def _writable_problem(folder) -> str:
+    """そのフォルダに CSV を書けるか。書けなければ理由(無ければ作ってみる)。"""
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        probe = folder / ".write-test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as exc:
+        return f"そのフォルダには書けません: {folder}({exc})"
+    return ""
 
 
 # ------------------------------------------------------------------

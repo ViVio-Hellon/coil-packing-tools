@@ -528,7 +528,7 @@ def export_csv(source_key: str, table: str, *, query: str = "", sort: str = "",
     source = source_of(source_key)
     shared = shared_settings.shared_dir()
     path = _find(source, shared)
-    out_dir = folder or config.EXPORT_DIR
+    out_dir = folder or config.export_dir()
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
