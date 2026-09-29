@@ -95,7 +95,15 @@ class PageRoutes:
         cls._pane_flag.on = bool(on)
 
     def _shell(self, title: str, content: str, nav: str = "",
-               page_script: str = "") -> str:
+               page_script: str = "", print_only: bool = False) -> str:
+        """画面の外枠。
+
+        `print_only` は**印刷用の別タブ**(ラベル印刷・印刷ビュー・全サイズ印刷・
+        位置合わせ)。上部のメニュー(指定サイズ・風袋計算…)を出さず、「印刷」
+        「このタブを閉じる」だけを出す。メニューを出すと、印刷のタブから業務の画面へ
+        進めてしまい、ツールが2つ開いたのと同じになってタブが増える一方だった
+        (現場の指摘)。印刷用のタブは受付(この画面で使う)もしない。
+        """
         if getattr(self._pane_flag, "on", False):
             # 起動ページのタブとして差し込むので、外枠は付けない
             return content + page_script
@@ -123,9 +131,13 @@ class PageRoutes:
             "materialStale": "stale" if stale else "",
             "materialSourceHint": hint,
             # 入力画面は 1 つだけ。開いてよいか確認できるまで操作させない。
-            "screenGuard": "1" if nav in self._INPUT_NAVS else "",
-            "screenGuardHidden": "" if nav in self._INPUT_NAVS else "hidden",
+            # 印刷用のタブは入力画面ではないので確かめない(全サイズ印刷で
+            # 「この画面は開けません」の覆いが出ていた)
+            "screenGuard": "1" if nav in self._INPUT_NAVS and not print_only else "",
+            "screenGuardHidden": "" if nav in self._INPUT_NAVS and not print_only else "hidden",
             "screenTitle": title,
+            "bodyClass": "print-only" if print_only else "",
+            "printbar": self._printbar(title) if print_only else "",
         }
         for key, name in (("navHome", "home"), ("navAll", "all"),
                           ("navTare", "tare"), ("navList", "list"),
@@ -133,6 +145,15 @@ class PageRoutes:
                           ("navSettings", "settings")):
             ctx[key] = "on" if nav == name else ""
         return self.r.render("_layout.html", ctx)
+
+    @staticmethod
+    def _printbar(title: str) -> str:
+        """印刷用のタブの帯(メニューの代わり)。「印刷」と「このタブを閉じる」だけ。"""
+        return ('<div class="printbar">'
+                f'<span class="printbar-title">印刷用のタブ: {esc(title)}</span>'
+                '<button type="button" class="btn btn-primary" data-print-now>印刷</button>'
+                '<button type="button" class="btn" data-close-tab>このタブを閉じる</button>'
+                '</div>')
 
     # ============================================================ メイン
     def index(self) -> str:
@@ -264,7 +285,7 @@ class PageRoutes:
             body = ('<div class="card"><h2>風袋計算</h2>'
                     '<div class="empty">計算結果がありません。'
                     '「重量計算_DB」を実行してください。</div></div>')
-            return self._shell("風袋計算", body, "tare")
+            return self._shell("風袋計算", body, "tare", print_only=print_view)
 
         blocks = []
         for coil_no in sorted(data):
@@ -301,7 +322,7 @@ class PageRoutes:
         body = head + warn + tools + '<div class="blocks">' + "".join(blocks) + '</div>' + foot
         script = "<script>window.addEventListener('load',function(){window.print();});</script>" \
             if print_view else ""
-        return self._shell("風袋計算", body, "tare", script)
+        return self._shell("風袋計算", body, "tare", script, print_only=print_view)
 
     def _report_head(self, title: str, state) -> str:
         sizes = " / ".join([s for s in (state.lbl_size1, state.lbl_size2) if s])
@@ -318,7 +339,7 @@ class PageRoutes:
             body = ('<div class="card"><h2>羅列計算（50まで）</h2>'
                     '<div class="empty">計算結果がありません。'
                     'メイン画面の「羅列計算」を実行してください。</div></div>')
-            return self._shell("羅列計算", body, "list")
+            return self._shell("羅列計算", body, "list", print_only=print_view)
 
         heads = "".join("<th>%s</th>" % esc(h) for h in data["headers"])
         keys = data["columnKeys"]
@@ -358,7 +379,7 @@ class PageRoutes:
                 f'<tbody>{"".join(trs)}</tbody></table></div>' + foot)
         script = "<script>window.addEventListener('load',function(){window.print();});</script>" \
             if print_view else ""
-        return self._shell("羅列計算", body, "list", script)
+        return self._shell("羅列計算", body, "list", script, print_only=print_view)
 
     # ============================================================ 計算内訳
     def breakdown(self) -> str:
@@ -475,7 +496,7 @@ class PageRoutes:
                     '<th>型番</th><th>データ行</th><th>追加行</th><th>検査番号</th>'
                     '<th>重量</th><th>更新</th><th></th></tr></thead>'
                     f'<tbody>{"".join(cards)}</tbody></table></div>')
-            return self._shell("ラベル台紙", body, "labels")
+            return self._shell("ラベル台紙", body, "labels", print_only=print_view)
 
         sections = []
         for ob in ob_list:
@@ -525,7 +546,7 @@ class PageRoutes:
         body = tools + "".join(sections)
         script = "<script>window.addEventListener('load',function(){window.print();});</script>" \
             if print_view else ""
-        return self._shell("ラベル台紙", body, "labels", script)
+        return self._shell("ラベル台紙", body, "labels", script, print_only=print_view)
 
     # ============================================================ ラベル印刷
     def _calibration(self):
@@ -622,7 +643,7 @@ class PageRoutes:
             body = ('<div class="card"><h2>ラベル印刷</h2>'
                     '<div class="empty">印刷するラベルがありません。'
                     'メイン画面で「重量反映」を実行してください。</div></div>')
-            return self._shell("ラベル印刷", body, "labels")
+            return self._shell("ラベル印刷", body, "labels", print_only=True)
 
         # 本数・高さ・NW・GW は「計算」でしか書き換わらない（VBA と同じ）。
         # 検番・重量だけ「重量反映」で変わるため、入力を変えて反映だけして
@@ -640,7 +661,8 @@ class PageRoutes:
                 'このまま刷ると<b>別々のコイルの値が混ざったラベル</b>になります。'
                 '<b>メイン画面で「計算」を実行してください。</b>'
                 '<div class="btn-row">'
-                f'<a class="btn primary" href="{self.base}/">メイン画面へ戻る</a>'
+                '<button type="button" class="btn primary" data-close-tab>'
+                'このタブを閉じる(本ツールのタブへ戻る)</button>'
                 '</div></div>'
                 # ボタンを消すだけでは Ctrl+P / メニューから刷れてしまう。
                 # 印刷そのものを空にして、理由を紙に出す。
@@ -681,7 +703,7 @@ class PageRoutes:
                 f'<a class="btn" href="{self.base}/labels/calibration">位置合わせ（試し刷り）</a>'
                 '</div></div>')
         return self._shell("ラベル印刷",
-                           stale_note + note + font_css + pages, "labels")
+                           stale_note + note + font_css + pages, "labels", print_only=True)
 
     def label_calibration(self) -> str:
         """試し刷りで位置を合わせる画面。
@@ -705,7 +727,8 @@ class PageRoutes:
             f'<p class="calstate" id="calNow">{state}</p>'
             '<p class="hint">一度合わせれば、<b>以後の印刷はずっとこの位置</b>で刷られます'
             '（毎回やる必要はありません）。値はこの端末に保存されます。'
-            f'全ラインへ同じ値を配るときは <a href="{self.base}/settings">設定 → 配布設定</a>。</p>'
+            # 印刷用のタブの中なので、業務の画面へは進ませない(文で案内するだけ)
+            '全ラインへ同じ値を配るときは、本ツールのタブの<b>設定 → 配布設定</b>から。</p>'
             '<ol class="calsteps">'
             '<li><b>試し刷り</b>を押して 1 枚刷る。'
             '<span class="hint">普通紙に刷って台紙と重ね、明るい所で透かして見ます'
@@ -718,7 +741,9 @@ class PageRoutes:
             '</ol>'
             '<div class="btn-row">'
             '<button class="btn btn-primary" onclick="window.print()">試し刷り</button>'
-            f'<a class="btn" href="{self.base}/labels">ラベル台紙へ戻る</a>'
+            # 印刷用のタブの中。ラベル台紙(業務の画面)へ進まず、来た印刷画面へ戻る
+            '<button type="button" class="btn" onclick="history.length > 1 ? history.back()'
+            ' : window.close()">ラベル印刷へ戻る</button>'
             '</div></div>')
 
         # ---------------- ずれを直す ----------------
@@ -833,7 +858,7 @@ class PageRoutes:
 
         body = intro + fix + measure + dialog + info + sheet
         return self._shell("ラベル位置合わせ", body, "labels",
-                           self._calibration_script())
+                           self._calibration_script(), print_only=True)
 
     def _calibration_script(self) -> str:
         """位置合わせ画面のスクリプト。"""
@@ -1084,7 +1109,8 @@ class PageRoutes:
         svc = self.wf.all_size
         if not combo:
             return self._shell("全サイズ印刷",
-                               '<div class="empty">サイズが指定されていません。</div>', "all")
+                               '<div class="empty">サイズが指定されていません。</div>', "all",
+                               print_only=True)
         n1, n2 = sheet_names(combo)
         blocks = []
         for name in (n1, n2):
@@ -1127,10 +1153,11 @@ class PageRoutes:
                           f'<div class="labelsheet">{"".join(labels)}</div></div>')
         if not blocks:
             return self._shell("全サイズ印刷",
-                               '<div class="empty">重量インプットがありません。</div>', "all")
+                               '<div class="empty">重量インプットがありません。</div>', "all",
+                               print_only=True)
         script = ("<script>window.addEventListener('load',"
                   "function(){window.print();});</script>")
-        return self._shell("全サイズ印刷", "".join(blocks), "all", script)
+        return self._shell("全サイズ印刷", "".join(blocks), "all", script, print_only=True)
 
     # ============================================================ 設定
     def settings(self) -> str:

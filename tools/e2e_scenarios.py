@@ -4,7 +4,7 @@
 
     python tools/e2e_scenarios.py                 # 一連の流れ → 交互に使う → 放置する
     python tools/e2e_scenarios.py --quick         # 放置を短くする(動きの確認用)
-    python tools/e2e_scenarios.py --only flow     # flow / alternate / idle のどれかだけ
+    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / idle のどれかだけ
 
 【何をするか】
 本物の起動(`start_app.py`)で統合アプリを立て、実ブラウザ(Chromium)で統合画面を開き、
@@ -689,6 +689,122 @@ def scenario_alternate(app: App, ctx, sh: Shell, note: dict) -> None:
 
 
 # ======================================================================
+# 2b. タブを何枚も開いたまま使う(送信・受信)
+# ======================================================================
+def _print_tab_state(pg) -> dict:
+    """印刷用のタブ: メニュー・受付の覆いが出ていないか。"""
+    return pg.evaluate("""() => {
+      const shown = s => { const e = document.querySelector(s); return !!e && !e.hidden &&
+        getComputedStyle(e).display !== 'none'; };
+      return {menu: shown('.appbar-nav'), guard: shown('#screenguard'), bar: shown('.printbar')}; }""")
+
+
+def scenario_multitab(app: App, ctx, sh: Shell, note: dict) -> None:
+    print("■ 2b. タブを何枚も開いたまま使う(送信・受信)")
+    tabs = []
+    other = ctx.new_page()                          # 本ツール以外のサイト
+    other.set_content("<h1>社内ポータル</h1>")
+    # --- ペナラベル: 小ラベルの印刷を3回(タブが増える)・風袋計算の印刷ビュー ---
+    p = sh.tab("pena")
+    pena_ready(p)
+    for _ in range(3):
+        with ctx.expect_page() as info:
+            p.click("button[data-act=printLabels]")
+        tabs.append(info.value)
+    p.click('a[data-pane="tare"]')
+    wait_until(lambda: p.locator('a[href$="/tare/print"]').count() > 0, 8)
+    with ctx.expect_page() as info:
+        p.click('a[href$="/tare/print"]')
+    tabs.append(info.value)
+    p.click('a[data-pane="home"]')
+    # --- 梱包明細: 帳票を2回 ---
+    d = sh.tab("details")
+    for _ in range(2):
+        with ctx.expect_page() as info:
+            d.click("#btnPrint")
+        tabs.append(info.value)
+    # --- 資材計算: チェックリストと発注票 ---
+    m = sh.tab("material")
+    material_ready(m)
+    for path in ("/material/report/checklist", "/material/report/order"):
+        pg = ctx.new_page()
+        pg.goto(app.base + path + "?t=" + app.token)
+        tabs.append(pg)
+    for pg in tabs:
+        pg.wait_for_load_state()
+    time.sleep(2)
+    pena_tabs = [pg for pg in tabs if "/pena/" in pg.url]
+    states = [_print_tab_state(pg) for pg in pena_tabs]
+    check("複数タブ: ペナラベルの印刷のタブにメニューも受付の覆いも出ない",
+          all(not st["menu"] and not st["guard"] and st["bar"] for st in states), states[:2])
+    check("複数タブ: 印刷のタブを %d 枚開いても、統合画面に断り・接続なしが出ない" % len(tabs),
+          not sh.trouble(), sh.trouble())
+
+    # --- 開いたまま3機能で送る・受ける ---
+    p = sh.tab("pena")
+    check("複数タブ: ペナラベルで重量反映", pena_weights(p, "y333333", "30", "32"),
+          text(p, "#toast .toast-body"))
+    for i, n in enumerate(("11", "11", "10", "10"), 1):
+        p.fill(f"#coilH{i}", n)
+    p.click("button[data-act=calcTare]")
+    check("複数タブ: ペナラベルで風袋計算(30kg × 11本 = 330.0)",
+          pena_toast(p, "計算しました") and text(p, "#nw1") == "330.0", text(p, "#nw1"))
+    labels = pena_tabs[0]
+    labels.reload()
+    labels.wait_for_load_state()
+    check("複数タブ: 印刷のタブを読み直すと新しい計算が出る(受信)",
+          "Y333333" in labels.content() or "330" in labels.content(), labels.url.split("?")[0])
+    d = sh.tab("details")
+    err = details_stack_and_output(d, ["1-5", "2-5"])
+    check("複数タブ: 梱包明細で出力(送信)", not err, err or text(d, "#notice"))
+    m = sh.tab("material")
+    err = material_calc(m, "A123456")
+    check("複数タブ: 資材計算で計算(送信)", not err, err)
+
+    # --- 同時に送る: 帳票の書き足し × 2・ペナラベルの計算・資材計算の計算 ---
+    reports = [pg for pg in tabs if "/details/report/" in pg.url]
+    for i, rp in enumerate(reports):
+        rp.click('span.edit[data-placeholder="サイズ"]')
+        rp.keyboard.press("End")
+        rp.keyboard.type(f"-{i}")
+    p = sh.frame("pena")
+    m = sh.frame("material")
+    p.evaluate("() => document.querySelector('button[data-act=calcTare]').click()")
+    m.evaluate("() => document.querySelector('#run').click()")
+    for rp in reports:
+        rp.keyboard.press("Enter")
+    saved = [wait_until(lambda rp=rp: "保存しました" in text(rp, "#editSaved")
+                        or "開き直して" in text(rp, "#editSaved"), 8) for rp in reports]
+    check("複数タブ: 同時に送っても帳票の書き足しが届く", all(saved), [text(rp, "#editSaved") for rp in reports])
+    check("複数タブ: 同時に送ってもペナラベル・資材計算の計算が返る",
+          pena_toast(p, "計算しました") and material_toast(m, "台数"),
+          (text(p, "#toast .toast-body"), text(m, "#toast")))
+
+    # --- 統合画面を読み直す(印刷のタブは開いたまま) ---
+    sh.page.reload()
+    wait_until(lambda: all(sh.frame(k) for k in ("details", "pena", "material")), 20)
+    sh.page.wait_for_timeout(3000)
+    trouble = [] if sh.ready(15) else sh.trouble()
+    check("複数タブ: 印刷のタブを開いたまま統合画面を読み直しても断られない", not trouble, trouble)
+    p = sh.tab("pena")
+    p.click("button[data-act=calcTare]")
+    check("複数タブ: 読み直したあとも計算できる", pena_toast(p, "計算しました"), text(p, "#toast .toast-body"))
+
+    # --- 印刷のタブを順ばらばらに閉じる ---
+    for pg in (tabs[3], tabs[0], tabs[6], tabs[1], tabs[5], tabs[2], tabs[7], tabs[4]):
+        if not pg.is_closed():
+            pg.close(run_before_unload=True)
+        time.sleep(0.4)
+    other.close()
+    time.sleep(2)
+    trouble = [] if sh.ready(10) else sh.trouble()
+    check("複数タブ: 印刷のタブを全部閉じても統合画面はそのまま", not trouble and app.alive(), trouble)
+    logs = app.logs()
+    opened = logs.count("別タブ tab-")
+    check("複数タブ: 印刷のタブの心拍がサーバに届いていた", opened >= len(tabs), f"{opened} 回")
+
+
+# ======================================================================
 # 3. 放置する
 # ======================================================================
 _HIDE = """() => {
@@ -905,7 +1021,7 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--only", choices=("flow", "alternate", "idle"))
+    ap.add_argument("--only", choices=("flow", "alternate", "multitab", "idle"))
     ap.add_argument("--quick", action="store_true", help="放置を短くする")
     ap.add_argument("--keep", action="store_true", help="試験用の置き場所を残す")
     args = ap.parse_args(argv)
@@ -933,10 +1049,12 @@ def main(argv=None) -> int:
         ctx.on("page", lambda p: p.on("pageerror", lambda e: errors.append(f"{p.url.split('?')[0]}: {e}")))
         ctx.on("page", lambda p: p.on("dialog", lambda d: d.accept()))
         sh = Shell(ctx, app)
-        if args.only in (None, "flow", "alternate", "idle"):
+        if args.only in (None, "flow", "alternate", "multitab", "idle"):
             scenario_flow(app, ctx, sh, note)
-        if args.only in (None, "alternate", "idle"):
+        if args.only in (None, "alternate", "multitab", "idle"):
             scenario_alternate(app, ctx, sh, note)
+        if args.only in (None, "multitab"):
+            scenario_multitab(app, ctx, sh, note)
         if args.only in (None, "idle"):
             minutes = ({"visible": 125, "hidden": 125, "sleep": 30, "report": 110} if args.quick else
                        {"visible": 360, "hidden": 300, "sleep": 120, "report": 150})

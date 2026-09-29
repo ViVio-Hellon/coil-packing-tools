@@ -501,3 +501,12 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
 .pbar-track{height:14px; background:#e6ebef; border-radius:7px; overflow:hidden}
 .pbar-fill{height:100%; width:0; background:#0e6a72; transition:width .2s ease}
 .pbar-text{margin-top:8px; font-size:13px; color:#44515c}
+
+/* 印刷用のタブ(ラベル印刷・印刷ビュー・全サイズ印刷・位置合わせ)。
+   上部のメニューと診断へのリンクを出さず、「印刷」「このタブを閉じる」だけの帯にする。
+   メニューから業務の画面へ進めると、ツールが2つ開いたのと同じになる(現場の指摘) */
+.printbar{display:none}
+.print-only .appbar-nav, .print-only .appfoot a{display:none}
+.print-only .printbar{display:flex; gap:8px; align-items:center; flex:1 1 auto; margin-left:16px}
+.print-only .printbar-title{font-weight:700; margin-right:auto}
+.print-only .printbar .btn{width:auto; margin:0}

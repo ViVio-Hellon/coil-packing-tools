@@ -115,6 +115,47 @@ class PenaFieldFeedbackTest(unittest.TestCase):
         self.assertEqual(self.client.get("/pena/api/progress").status_code, 403, "トークンが要る")
 
 
+class PrintTabTest(unittest.TestCase):
+    """印刷用のタブは印刷専用(ペナラベル 1.5.5。現場の指摘)。
+
+    上部のメニュー(指定サイズ・風袋計算…)から業務の画面へ進めると、ツールが2つ
+    開いたのと同じになり、タブが増える一方だった。メニューを出さず、「印刷」
+    「このタブを閉じる」だけの帯にする。受付(この画面で使う)もしない。
+    """
+
+    PRINT_PAGES = ("/pena/labels/print?ob=5", "/pena/tare/print", "/pena/list/print",
+                   "/pena/labels/sheet?ob=5", "/pena/labels/calibration",
+                   "/pena/all-size/print?combo=x", "/pena/all-size/print")
+
+    def setUp(self):
+        self.client = _make_app(self).test_client()
+
+    def test_print_pages_are_print_only(self):
+        for path in self.PRINT_PAGES:
+            with self.subTest(path=path):
+                html = self.client.get(path).get_data(as_text=True)
+                self.assertIn('<body class="print-only"', html)
+                self.assertIn('class="printbar"', html)
+                self.assertIn("data-close-tab", html)
+                self.assertIn('data-guard=""', html, "印刷用のタブは受付しない")
+
+    def test_business_pages_keep_the_menu(self):
+        for path in ("/pena/", "/pena/tare", "/pena/all-size", "/pena/settings"):
+            with self.subTest(path=path):
+                html = self.client.get(path).get_data(as_text=True)
+                self.assertIn('<body class=""', html)
+                self.assertNotIn('class="printbar"', html)
+
+    def test_no_links_to_business_pages_in_print_tabs(self):
+        import re
+        for path in ("/pena/labels/calibration", "/pena/labels/print?ob=5"):
+            html = self.client.get(path).get_data(as_text=True)
+            main = html[html.index("<main"):html.index("</main>")]
+            hrefs = re.findall(r'href="([^"]+)"', main)
+            for href in hrefs:
+                self.assertTrue(href.startswith("/pena/labels/"), (path, href))
+
+
 class OtherTabsTest(unittest.TestCase):
     """本ツール以外のタブ(別のサイト・同じ PC の別のアプリ)からの送信は断る(1.0.7)。
 

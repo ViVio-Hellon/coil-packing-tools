@@ -121,6 +121,23 @@
   }
   window.pplAskPassword = askPassword;
 
+  // ---------------------------------------------------------- 印刷用のタブ
+  // 帯の「印刷」「このタブを閉じる」(`pages._printbar`)。閉じられないブラウザ・
+  // 開き方のときは、× で閉じるよう案内する(本ツールのタブはそのまま残っている)
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || !t.closest) { return; }
+    if (t.closest("[data-print-now]")) { window.print(); return; }
+    if (t.closest("[data-close-tab]")) {
+      window.close();
+      setTimeout(function () {
+        if (!window.closed) {
+          toast("このタブはブラウザの × で閉じてください。本ツールのタブはそのまま開いています。", "info");
+        }
+      }, 300);
+    }
+  });
+
   // ---------------------------------------------------------- 画面の多重起動
   // 作業状態（検査番号・重量・本数・計算結果）はサーバー側に1組しか無い。
   // 入力できる画面を2枚開くと両方が同じ1組を書き換え、

@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{base}}/static/css/app.css">
 </head>
 <!-- 入口(統合版では /pena)と起動トークン。app.js が経路とヘッダに付ける -->
-<body data-base="{{base}}" data-token="{{token}}">
+<body class="{{bodyClass}}" data-base="{{base}}" data-token="{{token}}">
 <header class="appbar no-print">
   <div class="appbar-title">{{appName}}<span class="appver" title="版 {{version}}／版を切った日 {{build}}／中身の指紋 {{codeStamp}}">v{{version}}<span class="appstamp">{{build}}</span></span></div>
   <nav class="appbar-nav">
@@ -19,6 +19,7 @@
     <a href="{{base}}/all-size" class="{{navAll}}">全サイズ</a>
     <a href="{{base}}/settings" class="{{navSettings}}">設定</a>
   </nav>
+  {{{printbar}}}
   <div class="appbar-right">
     <span class="src src-{{materialSource}} {{materialStale}}" title="{{materialSourceHint}}">{{materialSourceLabel}}</span>
     <span id="conn" class="conn" title="バックエンド接続状態">接続確認中</span>
