@@ -602,6 +602,7 @@ def scenario_alternate(app: App, ctx, sh: Shell, note: dict) -> None:
     p.click("button[data-act=calcTare]")
     check("交互: ペナラベルの続き(風袋計算。重量 20kg × 11本 = 220.0)",
           pena_toast(p, "計算しました") and text(p, "#nw1") == "220.0", text(p, "#nw1"))
+    note["pena"] = ("X222222", "220.0")          # 翌朝も残っているはずの値
     d = sh.tab("details")
     with ctx.expect_page() as info:
         d.click("#btnPrint")
@@ -749,6 +750,7 @@ def scenario_multitab(app: App, ctx, sh: Shell, note: dict) -> None:
     p.click("button[data-act=calcTare]")
     check("複数タブ: ペナラベルで風袋計算(30kg × 11本 = 330.0)",
           pena_toast(p, "計算しました") and text(p, "#nw1") == "330.0", text(p, "#nw1"))
+    note["pena"] = ("Y333333", "330.0")
     labels = pena_tabs[0]
     labels.reload()
     labels.wait_for_load_state()
@@ -1001,8 +1003,9 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
     trouble = [] if sh.ready(15) else sh.trouble()
     check("放置e: 開き直した統合画面で3機能とも使える", not trouble, trouble)
     p = sh.tab("pena")
+    want = note.get("pena", ("X222222", "220.0"))   # 最後に入れた値
     check("放置e(残るもの): ペナラベルの検査番号と風袋計算の結果",
-          text(p, "#lblKensaNo") == "X222222" and text(p, "#nw1") == "220.0",
+          (text(p, "#lblKensaNo"), text(p, "#nw1")) == want,
           (text(p, "#lblKensaNo"), text(p, "#nw1")))
     m = sh.tab("material")
     material_ready(m)
