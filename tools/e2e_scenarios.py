@@ -4,7 +4,7 @@
 
     python tools/e2e_scenarios.py                 # 一連の流れ → 交互に使う → 放置する
     python tools/e2e_scenarios.py --quick         # 放置を短くする(動きの確認用)
-    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / idle のどれかだけ
+    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / storage / idle のどれかだけ
 
 【何をするか】
 本物の起動(`start_app.py`)で統合アプリを立て、実ブラウザ(Chromium)で統合画面を開き、
@@ -31,6 +31,9 @@
       (f で捨てられた前の画面が残っていても、自分で終わること)
    放置のあと、3機能とも「断られた」「接続なし」「開き直してください」が出ず、
    そのまま操作を続けられること
+4. 保存先(`--only storage`)
+   3機能の設定を開き、「このPCに保存(このPCで引き継ぐ)」と「複数のPCで共有」が
+   ファイルの場所つきで出ていること(`--shots フォルダ` で画面の写しも残す)
 
 【要るもの】Playwright と Chromium(`tools/smoke_shell.py` と同じ)。現場の PC には要らない。
 """
@@ -807,6 +810,85 @@ def scenario_multitab(app: App, ctx, sh: Shell, note: dict) -> None:
 
 
 # ======================================================================
+# 保存先(このPC／複数のPCで共有) ── 3機能の設定部に明記してあるか(統合 1.0.10)
+# ======================================================================
+def _store_rows(fr) -> dict:
+    """描かれた保存先の表。{種類: [名前・場所…の文字]}"""
+    return fr.evaluate("""() => Object.fromEntries([...document.querySelectorAll('[data-store]')]
+        .map(b => [b.dataset.store, [...b.querySelectorAll('tbody tr')].map(r => r.innerText)]))""")
+
+
+def scenario_storage(app: App, ctx, sh: Shell, note: dict, shots: str = "") -> None:
+    """3機能の設定を開き、**このPCに保存**と**全ラインで共有**が分けて出ていること。
+
+    現場の指摘: このPCで引き継いで使うものと、複数のPCで共有するものは違う。設定部に
+    そういうファイルがあることを明記してほしい。画面の JavaScript が描くところまで見る。
+    """
+    def shot(page_or_frame, name):
+        if shots:
+            Path(shots).mkdir(parents=True, exist_ok=True)
+            sh.page.screenshot(path=str(Path(shots) / f"{name}.png"), full_page=False)
+
+    # --- 梱包明細: 設定 → 保存先(このPC／共有)
+    d = sh.tab("details")
+    d.click("#btnSettings")
+    d.click("#tabStore")
+    ok = wait_until(lambda: visible(d, "#panelStore")
+                    and d.locator("#storeGroups [data-store]").count() == 3, 10)
+    rows = _store_rows(d) if ok else {}
+    local = "\n".join(rows.get("local", []))
+    shared = "\n".join(rows.get("shared", []))
+    check("保存先: 梱包明細 このPCに保存(設定ファイル・手元のDB)",
+          "user_config.json" in local and "packing_details.db" in local, local[:200])
+    check("保存先: 梱包明細 全ラインで共有(右上の文字・管理者パスワード・明細の履歴)",
+          all(n in shared for n in ("梱包資材マスタ.sqlite3", "梱包明細打ち出し.json",
+                                    "梱包明細履歴.sqlite3")), shared[:200])
+    shot(d, "details_storage")
+    d.click("#tabPlace")
+    badges = d.locator("#panelPlace .where-local").count()
+    check("保存先: 梱包明細 置き場所の欄ごとに「このPCに保存」の札", badges == 4, badges)
+    shot(d, "details_place")
+    d.click("#btnSettingsClose")
+
+    # --- 資材計算: 設定 → 保存先(このPC／共有)
+    m = sh.tab("material")
+    m.click('.rail__item[href*="/settings"]')
+    material_ready(m)
+    m.click("#tab-storage")
+    # 面が**開いて見えている**ところまで(描いてあっても隠れていれば読めない)
+    ok = wait_until(lambda: visible(m, "#panel-storage") and not visible(m, "#panel-source")
+                    and m.locator("#storeGroups [data-store]").count() == 3, 10)
+    rows = _store_rows(m) if ok else {}
+    local = "\n".join(rows.get("local", []))
+    check("保存先: 資材計算 このPCに保存(設定ファイル・作業用DB・このPCだけのパスワード)",
+          "user_config.json" in local and "coil_tool.db" in local and "このPCだけ" in local,
+          local[:200])
+    check("保存先: 資材計算 全ラインで共有(マスタ管理の書き先)",
+          any("梱包資材マスタ.sqlite3" in r and "マスタ管理" in r for r in rows.get("shared", [])),
+          rows.get("shared"))
+    shot(m, "material_storage")
+    m.click("#tab-master")
+    check("保存先: 資材計算 パスワードは「このPCだけ」と書いてある",
+          "このPCだけのパスワードです" in text(m, "#panel-master"))
+    m.locator(".rail__item").first.click()            # 最初の画面へ戻す
+    material_ready(m)
+
+    # --- ペナラベル: 設定(パス設定の面の「設定の保存先」)
+    p = sh.tab("pena")
+    p.click('.appbar-nav a[href$="/settings"]')
+    ok = wait_until(lambda: visible(p, "#storage"), 10)
+    rows = _store_rows(p) if ok else {}
+    local = "\n".join(rows.get("local", []))
+    check("保存先: ペナラベル このPCに保存(local.json・状態DB)",
+          "local.json" in local and "state.sqlite3" in local, local[:200])
+    p.locator("#storage").scroll_into_view_if_needed()
+    shot(p, "pena_storage")
+    p.click('.appbar-nav a[data-pane="home"]')
+    pena_ready(p)
+    check("保存先: 見たあとも3機能とも使える", sh.ready(10), sh.trouble())
+
+
+# ======================================================================
 # 3. 放置する
 # ======================================================================
 _HIDE = """() => {
@@ -1024,7 +1106,8 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--only", choices=("flow", "alternate", "multitab", "idle"))
+    ap.add_argument("--only", choices=("flow", "alternate", "multitab", "storage", "idle"))
+    ap.add_argument("--shots", default="", help="保存先の画面の写しを置くフォルダ")
     ap.add_argument("--quick", action="store_true", help="放置を短くする")
     ap.add_argument("--keep", action="store_true", help="試験用の置き場所を残す")
     args = ap.parse_args(argv)
@@ -1058,6 +1141,8 @@ def main(argv=None) -> int:
             scenario_alternate(app, ctx, sh, note)
         if args.only in (None, "multitab"):
             scenario_multitab(app, ctx, sh, note)
+        if args.only in (None, "storage"):
+            scenario_storage(app, ctx, sh, note, args.shots)
         if args.only in (None, "idle"):
             minutes = ({"visible": 125, "hidden": 125, "sleep": 30, "report": 110} if args.quick else
                        {"visible": 360, "hidden": 300, "sleep": 120, "report": 150})

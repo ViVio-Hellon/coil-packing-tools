@@ -17,6 +17,7 @@ import threading
 
 from flask import Blueprint, Response, jsonify, request
 
+from common import storage_places
 from modules.packing_details.meisai import (admin_password, config, data_sync, distribution, printing,
                     qa_mark, shared_settings, user_settings)
 from modules.packing_details.meisai.logging_utils import get_logger
@@ -81,7 +82,56 @@ def _local_state() -> dict:
         "master_db_name": config.MASTER_DB_NAME,
         "history_db_name": config.HISTORY_DB_NAME,
         "distribution": distribution.summary(),
+        "storage": _storage(),
     }
+
+
+def _storage() -> dict:
+    """設定・データの保存先。**このPCに残るもの**と**複数のPCで共有するもの**を分けて出す。
+
+    現場の指摘: このPCで引き継いで使うものと、複数のPCで共有するものは違う。
+    設定部にそういうファイルがあることを明記してほしい。
+    共有フォルダの**どこを見るか**という設定そのものはこのPCに入っている、も言う
+    (「梱包資材マスタのフォルダ（共有）」を変えても、ほかのPCは変わらない)。
+    """
+    P = storage_places.Place
+    share = shared_settings.shared_dir()
+    config_path = config.USER_CONFIG_PATH
+    return storage_places.Places(
+        local=[
+            P("設定ファイル", str(config_path),
+              "「置き場所・取り込み」の値（仕掛台帳・梱包課共有の仕掛・CSVの出力先・"
+              "梱包資材マスタのフォルダをどこにするか）・起動時の自動取り込み・"
+              "右上の文字と管理者パスワードの控え（共有に届かないときに使う）",
+              "" if config_path.exists() else "まだありません（設定を保存すると作ります）"),
+            P("手元のDB", str(config.DB_PATH),
+              "取り込んだ台帳の写し・副番履歴・作業の途中（直近5ロット）・出力した明細・"
+              "共有へ送る前の明細の履歴（届かないときはここに残して、あとで送る）"),
+            storage_places.log_place(),
+        ],
+        shared=[
+            P("紙面の右上の文字", str(share / config.MASTER_DB_NAME),
+              "表「梱包明細打ち出し」の右上の文字。「紙面の右上の文字」の面で変える"),
+            P("管理者パスワード", str(share / shared_settings.FILE_NAME),
+              "管理者パスワード（撹拌した値）と右上の文字の控え。「管理者パスワード」の面で変える"),
+            P("明細の履歴", str(share / config.HISTORY_DB_NAME),
+              "出力した明細の履歴（全ライン・3年）。出力するたびにこのPCから送る"),
+            P("仕掛台帳", str(config.lot_db_dir()),
+              "取り込み元（" + " / ".join(config.LOT_DB_FILES.values()) + "）",
+              "読むだけ（このツールは書き換えません）"),
+            P("梱包課共有の仕掛", str(config.konpo_db_dir()),
+              "取り込み元（" + " / ".join(config.KONPO_DB_FILES.values()) + "）",
+              "読むだけ（このツールは書き換えません）"),
+        ],
+        dist=[
+            P("配布設定", str(distribution.settings_path()),
+              "「配布設定」の面で書き出した値（"
+              + "・".join(label for _, label, _ in distribution.ITEMS) + "）"),
+        ],
+        shared_note=("共有フォルダの場所（どこを見るか）は、このPCの設定ファイルに入っています。"
+                     "「置き場所・取り込み」で変えても、ほかのPCは変わりません"
+                     "（ほかのPCもそろえるときは配布設定）。"),
+    ).to_dict()
 
 
 @bp.get("/api/settings")

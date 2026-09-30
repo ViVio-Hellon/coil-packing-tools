@@ -351,6 +351,27 @@ button.danger{border-color:var(--danger); color:var(--danger)}
 .dist-not{margin:0 0 6px; padding-left:18px}
 .m-badge.ok{background:var(--ok-soft); color:var(--ok)}
 #distMeta{white-space:pre-line}
+/* 保存先の札。**このPCに保存**(このPCで引き継ぐ)か**全ラインで共有**か(現場の指摘) */
+.where{font-size:11px; font-weight:600; padding:1px 8px; border-radius:10px;
+  border:1px solid currentColor; white-space:nowrap}
+.where-local{color:var(--accent-ink); background:var(--surface)}
+.where-shared{color:var(--warn); background:var(--surface)}
+.where-dist{color:var(--ink-3); background:var(--surface)}
+.store-box.store-local{border-left:4px solid var(--accent)}
+.store-box.store-shared{border-left:4px solid var(--warn)}
+.store-scroll{max-height:none; overflow-x:auto; border:1px solid var(--line-soft);
+  border-radius:var(--ctl-r)}
+/* `.his-table`(あとに書いてある・折り返さない)に勝つように2つ重ねる。場所は長いので折り返す */
+.his-table.store-table{table-layout:fixed}
+.his-table.store-table th:nth-child(1){width:10.5em}
+.his-table.store-table th:nth-child(2){width:38%}
+.his-table.store-table td{white-space:normal; vertical-align:top; overflow-wrap:anywhere}
+.his-table.store-table td.store-name{font-weight:600}
+.his-table.store-table td.store-path code{font-family:var(--mono); font-size:11px; word-break:break-all}
+.store-note{display:block; color:var(--ink-3); font-size:11px; margin-top:2px}
+.store-intro{margin:0 0 10px}
+.his-table.store-table tbody tr{cursor:default}
+.his-table.store-table tbody tr:hover{background:transparent}
 #distMeta.bad{color:var(--danger); font-weight:600}
 
 /* ---------- 待っている間(経過秒つき)・取り込みの進み具合 ---------- */

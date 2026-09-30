@@ -16,7 +16,7 @@ let view = null;
 // 帯の版バッジが `/settings#about` で飛んでくるので、印を見て
 // その面を開く ── 開かないと、飛んだ先が空に見える。
 // ------------------------------------------------------------------
-const PANELS = ['source', 'master', 'team', 'distribution', 'about'];
+const PANELS = ['source', 'master', 'team', 'distribution', 'storage', 'about'];
 
 export function openTab(name) {
   if (!PANELS.includes(name)) name = PANELS[0];
@@ -104,6 +104,32 @@ function renderAbout(a) {
   box.hidden = !warn;
 }
 
+// 保存先(このPC／複数のPCで共有)。**このPCで引き継ぐもの**と**全ラインで共有するもの**を
+// 分けて、ファイルの場所と中身を出す(現場の指摘: 2つは違う。設定部に明記してほしい)。
+// 見出し・説明は `common/storage_places.py` が渡す(3機能で同じ言葉にする)
+function renderStore(store) {
+  if (!store) return;
+  $('#storeGroups').innerHTML =
+    `<p class="setrow__d store-intro">${esc(store.intro)}</p>` +
+    store.groups.map(g => `
+    <div class="store-box store-${esc(g.kind)}" data-store="${esc(g.kind)}">
+      <h3 class="store-h">${esc(g.title)}
+        <span class="where where-${esc(g.kind)}">${esc(store.badge[g.kind])}</span></h3>
+      <p class="setrow__d">${esc(g.lead)}</p>
+      <div class="wrap">
+        <table class="grid-table store-table">
+          <thead><tr><th>何</th><th>場所</th><th>入っているもの</th></tr></thead>
+          <tbody>${g.rows.map(r => `<tr>
+            <td class="store-name">${esc(r.name)}</td>
+            <td class="store-path"><code>${esc(r.path)}</code></td>
+            <td>${esc(r.holds)}${r.note ? `<span class="store-note">${esc(r.note)}</span>` : ''}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      ${g.note ? `<p class="setrow__d">${esc(g.note)}</p>` : ''}
+    </div>`).join('');
+}
+
 function render(v) {
   view = v;
   $('#fields').innerHTML = v.fields.map(fieldHtml).join('');
@@ -118,6 +144,7 @@ function render(v) {
   text($('#p-config'), v.config_path);
   text($('#p-db'), v.db_path);
   text($('#p-log'), v.log_dir);
+  renderStore(v.storage);
 
   const order = ['包装仕様', 'パレット', 'リプラサイズ', '仕掛引当', '仕掛受注'];
   $('#imported').innerHTML = order.map(name => {

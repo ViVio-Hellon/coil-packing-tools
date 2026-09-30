@@ -180,6 +180,7 @@
     <button type="button" role="tab" id="tabQa" aria-controls="panelQa" data-tab="qa" aria-selected="false">紙面の右上の文字</button>
     <button type="button" role="tab" id="tabAdmin" aria-controls="panelAdmin" data-tab="admin" aria-selected="false">管理者パスワード</button>
     <button type="button" role="tab" id="tabDist" aria-controls="panelDist" data-tab="dist" aria-selected="false">配布設定</button>
+    <button type="button" role="tab" id="tabStore" aria-controls="panelStore" data-tab="store" aria-selected="false">保存先（このPC／共有）</button>
   </div>
   <div class="body">
     <p class="stamp set-loading" id="setLoading" role="status" hidden></p>
@@ -187,7 +188,7 @@
     <!-- ============ 置き場所・取り込み ============ -->
     <div class="set-panel" role="tabpanel" id="panelPlace" aria-labelledby="tabPlace">
       <section class="set-box" aria-labelledby="setLotHead">
-        <div class="set-box-head" id="setLotHead">仕掛台帳のフォルダ</div>
+        <div class="set-box-head"><span id="setLotHead">仕掛台帳のフォルダ</span><span class="where where-local">このPCに保存</span></div>
         {#- **探しているファイル名を出す。** 道だけ出しても、そこに何を
             置けばよいかが分からない -#}
         <span class="stamp files" id="setLotFiles"></span>
@@ -201,7 +202,7 @@
       </section>
 
       <section class="set-box" aria-labelledby="setKonpoHead">
-        <div class="set-box-head" id="setKonpoHead">梱包課共有の仕掛フォルダ</div>
+        <div class="set-box-head"><span id="setKonpoHead">梱包課共有の仕掛フォルダ</span><span class="where where-local">このPCに保存</span></div>
         <span class="stamp files" id="setKonpoFiles"></span>
         <input type="text" id="setKonpoDir" spellcheck="false" autocomplete="off" aria-labelledby="setKonpoHead">
         <span class="stamp" id="setKonpoNote"></span>
@@ -215,7 +216,7 @@
       {#- CSV の出力先(マスタ管理・明細の履歴の「CSV」)。**書く場所**なので、保存するときに
           書けるかを確かめる。取り込みはしない(現場の指摘: 出力先も設定できるように) -#}
       <section class="set-box" aria-labelledby="setExportHead">
-        <div class="set-box-head" id="setExportHead">CSVの出力先</div>
+        <div class="set-box-head"><span id="setExportHead">CSVの出力先</span><span class="where where-local">このPCに保存</span></div>
         <span class="stamp files">マスタ管理・明細の履歴の「CSV」がここへ書き出します</span>
         <input type="text" id="setExportDir" spellcheck="false" autocomplete="off" aria-labelledby="setExportHead">
         <span class="stamp" id="setExportNow"></span>
@@ -228,8 +229,12 @@
       {#- 共有(全ライン)。右上の文字・マスタ管理・履歴がここを見る。刷る文字の
           出どころが変わるので**管理者パスワードで守る** -#}
       <section class="set-box set-box-shared" id="setShareBox" aria-labelledby="setShareHead">
-        <div class="set-box-head" id="setShareHead">梱包資材マスタのフォルダ（共有）
+        <div class="set-box-head"><span id="setShareHead">梱包資材マスタのフォルダ（共有）</span><span class="where where-local">このPCに保存</span>
           <span class="stamp">変えるには管理者パスワードが要ります</span></div>
+        {#- **どこを見るか**はこのPCに保存。中身は全ラインで共有(現場の指摘: このPCで
+            引き継ぐものと、複数のPCで共有するものは違う) -#}
+        <span class="stamp">どのフォルダを見るかは<b>このPCに保存</b>します（ほかのPCは変わりません）。
+          フォルダの中身（右上の文字・管理者パスワード・明細の履歴）は<b>全ラインで共有</b>です。</span>
         <span class="stamp files" id="setShareFiles"></span>
         <span class="stamp" id="setShareUses">「マスタ管理」「履歴」・紙面の右上の文字は、この場所を見ます。</span>
         <input type="text" id="setShareDir" spellcheck="false" autocomplete="off" aria-labelledby="setShareHead">
@@ -248,7 +253,8 @@
         空にして保存すると既定の置き場所に戻ります。相対で書くとアプリのフォルダから
         たどります（共有に届かない端末で、手元の写しを指すのに使えます）。
       </p>
-      <div id="setPaths" class="stamp" style="margin-top:6px"></div>
+      <p class="stamp" style="margin-top:4px">この面の値は<b>このPCの設定ファイル</b>に保存し、
+        次に起動したときも引き継ぎます。ファイルの場所は「保存先（このPC／共有）」の面にあります。</p>
     </div>
 
     <!-- ============ 紙面の右上の文字 ============ -->
@@ -257,7 +263,7 @@
         開いた人が押し間違いで変えられる、にはしない -#}
     <div class="set-panel" role="tabpanel" id="panelQa" aria-labelledby="tabQa" hidden>
       <section class="set-box set-qa" aria-labelledby="setQaHead">
-        <div class="set-qa-head" id="setQaHead">紙面の右上の文字（全ラインで共有）
+        <div class="set-qa-head"><span id="setQaHead">紙面の右上の文字（全ラインで共有）</span><span class="where where-shared">全ラインで共有</span>
           <span class="stamp">変えるには管理者パスワードが要ります</span></div>
         <div class="set-qa-now">いま刷る文字 <b id="setQaNow"></b>
           <span class="stamp" id="setQaKind"></span></div>
@@ -283,7 +289,7 @@
     <!-- ============ 管理者パスワード ============ -->
     <div class="set-panel" role="tabpanel" id="panelAdmin" aria-labelledby="tabAdmin" hidden>
       <section class="set-box" aria-labelledby="setAdminHead">
-        <div class="set-box-head" id="setAdminHead">管理者パスワードを変える（全ラインで共有）</div>
+        <div class="set-box-head"><span id="setAdminHead">管理者パスワードを変える（全ラインで共有）</span><span class="where where-shared">全ラインで共有</span></div>
         <p class="stamp">紙面の右上の文字・梱包資材マスタのフォルダ・配布設定を変えるときに使います。</p>
         <div class="set-row">
           <label for="setAdminCurrent">いまのパスワード</label>
@@ -309,8 +315,8 @@
         1台で決めた設定を、アプリのフォルダごと配った先でそのまま使う -#}
     <div class="set-panel" role="tabpanel" id="panelDist" aria-labelledby="tabDist" hidden>
       <section class="set-box" aria-labelledby="distHead">
-        <div class="set-box-head" id="distHead">いま置いてある配布設定
-          <span class="m-badge" id="distState"></span></div>
+        <div class="set-box-head"><span id="distHead">いま置いてある配布設定</span>
+          <span class="m-badge" id="distState"></span><span class="where where-dist">アプリのフォルダ</span></div>
         <p class="stamp" id="distMeta"></p>
         <div class="tscroll dist-table"><table class="his-table">
           <thead><tr><th>項目</th><th>値</th></tr></thead>
@@ -319,7 +325,7 @@
         <p class="stamp">置き場所: <code id="distPath"></code></p>
       </section>
       <section class="set-box" aria-labelledby="distOutHead">
-        <div class="set-box-head" id="distOutHead">この端末の設定を配布設定にする</div>
+        <div class="set-box-head"><span id="distOutHead">この端末の設定を配布設定にする</span><span class="where where-dist">アプリのフォルダ</span></div>
         <p class="stamp">いまこの端末に入っている値を書き出します（前の中身は置き換えます）。
           配った先は<b>起動したときに読み込みます</b>。ただし<b>その端末にすでにある設定は
           読み込みません</b>（上書きしない）。揃えたいときは、配った先で「読み込み直す」。</p>
@@ -338,6 +344,14 @@
         </div>
         <p class="set-note" id="distNote" role="status" hidden></p>
       </section>
+    </div>
+
+    <!-- ============ 保存先(このPC／共有) ============ -->
+    {#- 現場の指摘: このPCで引き継いで使うもの(設定ファイル・手元のDB)と、複数のPCで
+        共有するもの(梱包資材マスタのフォルダ)は違う。どこに何があるかを明記する。
+        中身は `/api/settings` の `storage`(`common/storage_places.py` の言葉)から描く -#}
+    <div class="set-panel" role="tabpanel" id="panelStore" aria-labelledby="tabStore" hidden>
+      <div id="storeGroups"><p class="stamp">読み込み中…</p></div>
     </div>
   </div>
   <div class="foot">

@@ -47,6 +47,13 @@ _SIZE_ORDER = ["0.8mm×53.5mm", "1.0mm×33.0mm", "1.0mm×73.0mm",
 _DIM_RE = re.compile(r"(\d+(?:\.\d+)?)")
 
 
+def _where(kind: str) -> str:
+    """保存先の札(このPCに保存／全ラインで共有／アプリのフォルダ)。言葉は `common/storage_places.py`。"""
+    from common import storage_places
+    return (f'<span class="where where-{esc(kind)}">'
+            f'{esc(storage_places.BADGE.get(kind, ""))}</span>')
+
+
 def _describe_correction(cal) -> str:
     """いまの補正を、現場の言葉で言う（HTML）。"""
     from ..services import label_align as LA
@@ -726,7 +733,8 @@ class PageRoutes:
             '<div class="card no-print"><h2>ラベル位置合わせ</h2>'
             f'<p class="calstate" id="calNow">{state}</p>'
             '<p class="hint">一度合わせれば、<b>以後の印刷はずっとこの位置</b>で刷られます'
-            '（毎回やる必要はありません）。値はこの端末に保存されます。'
+            '（毎回やる必要はありません）。値は<b>このPCの設定（local.json）</b>に保存され、'
+            '次に起動したときも引き継ぎます（ほかのPCは変わりません）。'
             # 印刷用のタブの中なので、業務の画面へは進ませない(文で案内するだけ)
             '全ラインへ同じ値を配るときは、本ツールのタブの<b>設定 → 配布設定</b>から。</p>'
             '<ol class="calsteps">'
@@ -1182,7 +1190,7 @@ class PageRoutes:
             for it in rows:
                 fields.append(self._setting_field(it))
             blocks.append(
-                f'<div class="card"><h2>{esc(group)}</h2>'
+                f'<div class="card"><h2>{esc(group)} {_where("local")}</h2>'
                 f'<div class="setgrid">{"".join(fields)}</div></div>')
 
         if S.integrated(self.cfg):
@@ -1197,22 +1205,7 @@ class PageRoutes:
         from ..services import distribution as D
         dist_path = str(D.settings_path())
 
-        head = (
-            '<div class="card"><h2>設定の保存先</h2>'
-            '<table class="tbl"><thead><tr><th>層</th><th>ファイル</th>'
-            '<th>役割</th></tr></thead><tbody>'
-            f'<tr><td>同梱の既定</td><td class="mono">{esc(app_path)}</td>'
-            '<td>全員に配る既定値。管理者がファイルを直接編集する</td></tr>'
-            f'<tr><td>配布設定</td><td class="mono">{esc(dist_path)}</td>'
-            '<td>「配布設定」の面で書き出す。起動したとき、'
-            'この端末に<b>無い項目だけ</b>読み込む</td></tr>'
-            f'<tr><td><b>この端末</b></td><td class="mono">{esc(local_path)}</td>'
-            f'<td><b>この画面が書き込む先。</b>同梱の既定より優先される'
-            f'{"" if has_local else "（まだありません）"}</td></tr>'
-            '</tbody></table>'
-            '<p class="hint">アプリ本体を共有フォルダーへ置いている場合でも、'
-            'この画面の保存はローカル領域だけに書き込むため、'
-            '他の利用者へ影響しません。</p></div>')
+        head = self._storage_card(local_path, app_path, has_local, dist_path)
 
         tools_inner = (
             '<div class="btn-row">'
@@ -1268,6 +1261,84 @@ class PageRoutes:
                   f'{self._distribution_body()}</div>')
         return self._shell("設定", body, "settings", self._settings_script())
 
+    def _storage_card(self, local_path: str, app_path: str, has_local: bool,
+                      dist_path: str) -> str:
+        """設定・データの保存先。**このPCに残るもの**と**複数のPCで共有するもの**を分けて出す。
+
+        現場の指摘: このPCで引き継いで使うものと、複数のPCで共有するものは違う。
+        設定部にそういうファイルがあることを明記してほしい。言葉は
+        `common/storage_places.py`(3機能で同じ言葉にする)。
+        """
+        from common import storage_places
+        from ..services import distribution as D
+        from ..services import master_admin as MA
+        P = storage_places.Place
+        from ..services.settings import ACCDB_NAME
+        master = MA.source_path(self.wf.materials)
+        shared_log = str(getattr(self.cfg, "debug_print_path", "") or "")
+        aim = str(getattr(self.cfg, "aim_ref_path", "") or "")
+        # 移行前の Access(読むだけ)。参照先を入れている端末だけ出す
+        access = ([P("資材マスタ（旧 Access）", os.path.join(aim, ACCDB_NAME),
+                     "移行前の資材マスタ",
+                     "読むだけ（SQLite が読めず「旧 Access も試す」がオンのときだけ読みます）")]
+                  if aim else [])
+        places = storage_places.Places(
+            local=[
+                P("この端末の設定", local_path,
+                  "「パス設定」で保存した値・印刷位置の補正と倍率"
+                  "（ラベル台紙 → 位置合わせで入れた値）",
+                  "" if has_local else "まだありません（保存すると作ります）"),
+                P("状態DB", self.cfg.db_path,
+                  "指定サイズの台紙の入力・風袋計算の結果・50までリスト・画面の入力の途中"),
+                storage_places.log_place(),
+            ],
+            shared=[
+                P("資材マスタ", master or "（未設定）",
+                  "計算に使う資材の単重。「マスタ管理」で直すとここへ書きます"
+                  "（手元に写しを持たないので、次の計算からそのまま使われます）",
+                  "" if master else "「パス設定」の梱包資材マスタ（SQLite）で指定します"),
+                *access,
+                P("共有ログ", shared_log or "（未設定）",
+                  "動いた記録の写し（VBA の日報DebugPrint）",
+                  "" if shared_log else "未設定のときはこのPCのログだけに出します"),
+            ],
+            dist=[
+                P("同梱の既定", app_path,
+                  "全員に配る既定値（アプリのフォルダの中。管理者がファイルを直接編集する）"),
+                P("配布設定", dist_path,
+                  "「配布設定」の面で書き出した値"),
+            ],
+            shared_note=("資材マスタ・共有ログの場所（どこを見るか）は「この端末の設定」に入っています。"
+                         "ここで変えても、ほかのPCは変わりません（ほかのPCもそろえるときは配布設定）。"),
+        ).to_dict()
+
+        groups = []
+        for g in places["groups"]:
+            rows = "".join(
+                f'<tr><td class="store-name">{esc(r["name"])}</td>'
+                f'<td class="mono store-path">{esc(r["path"])}</td>'
+                f'<td>{esc(r["holds"])}'
+                + (f'<span class="store-note">{esc(r["note"])}</span>' if r["note"] else "")
+                + '</td></tr>'
+                for r in g["rows"])
+            groups.append(
+                f'<div class="store-box store-{esc(g["kind"])}" data-store="{esc(g["kind"])}">'
+                f'<h3>{esc(g["title"])} {_where(g["kind"])}</h3>'
+                f'<p class="hint">{esc(g["lead"])}</p>'
+                '<table class="tbl store-table"><thead><tr><th>何</th><th>場所</th>'
+                f'<th>入っているもの</th></tr></thead><tbody>{rows}</tbody></table>'
+                + (f'<p class="hint">{esc(g["note"])}</p>' if g["note"] else "")
+                + '</div>')
+        return ('<div class="card" id="storage"><h2>設定の保存先（このPC／複数のPCで共有）</h2>'
+                f'<p class="hint">{esc(places["intro"])}</p>'
+                + "".join(groups)
+                + '<p class="hint">この画面の値の決まり方: <b>この端末の設定</b>（local.json）が'
+                  'いちばん強く、無い項目は<b>同梱の既定</b>を使います。配布設定は、起動したときに'
+                  'この端末に<b>無い項目だけ</b>を「この端末の設定」へ写します。'
+                  'アプリ本体を共有フォルダーへ置いている場合でも、この画面の保存は'
+                  'このPCのローカル領域だけに書き込むため、他の利用者へ影響しません。</p>'
+                '</div>')
+
     def _distribution_body(self) -> str:
         """配布設定の面（python-web-tools の「配布設定」と同じ作り）。
 
@@ -1292,7 +1363,7 @@ class PageRoutes:
         now_card = (
             '<div class="card"><h2>いま置いてある配布設定 '
             f'<span id="distState" class="pill {"ok" if dist["exists"] else "warn"}">'
-            f'{"あり" if dist["exists"] else "なし"}</span></h2>'
+            f'{"あり" if dist["exists"] else "なし"}</span> {_where("dist")}</h2>'
             f'<p class="hint" id="distMeta">{meta}</p>'
             '<table class="tbl" style="max-width:820px"><thead><tr>'
             '<th>項目</th><th>値</th></tr></thead>'
@@ -1325,7 +1396,7 @@ class PageRoutes:
                 + "".join(boxes) + '</fieldset>')
 
         export_card = (
-            '<div class="card"><h2>この端末の設定を配布設定にする</h2>'
+            f'<div class="card"><h2>この端末の設定を配布設定にする {_where("dist")}</h2>'
             '<p class="hint">いまこの端末に入っている値をそのまま書き出します'
             '（前の中身は置き換えます）。配った先は<b>起動したときに読み込みます</b>。'
             'ただし<b>その端末にすでにある設定は読み込みません</b>（上書きしない）。<br>'
@@ -1394,7 +1465,7 @@ class PageRoutes:
         src = MA.source_path(repo) or "（未設定）"
 
         head = (
-            '<div class="card"><h2>書き先</h2>'
+            f'<div class="card"><h2>書き先 {_where("shared")}</h2>'
             f'<p class="hint">直すのは<b>共有の資材マスタ</b>です:'
             f' <span class="mono">{esc(src)}</span><br>'
             'このツールは手元に写しを持たないので、書いた内容は'

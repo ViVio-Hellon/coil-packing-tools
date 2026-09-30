@@ -198,7 +198,7 @@ function renderLocal(body, { fill = false } = {}) {
   $("setShareNow").textContent = `いま見ている場所: ${body.share_dir}`;
   $("setExportNow").textContent = `いまの出力先: ${body.export_dir}`;
   $("setExportDir").placeholder = `空なら既定: ${body.export_dir_default}`;
-  $("setPaths").textContent = `手元のDB: ${body.db_path}\nログ: ${body.log_dir}`;
+  renderStore(body.storage);
   $("setAdminMin").textContent = `${body.admin_min_length}文字以上`;
   qaMax = body.qa_mark_max || qaMax;
   countQa();
@@ -442,6 +442,52 @@ async function saveAdminPassword() {
 // ------------------------------------------------------------------
 // 配布設定(`meisai/distribution.py`)
 // ------------------------------------------------------------------
+/**
+ * 保存先(このPC／複数のPCで共有)。**このPCで引き継ぐもの**と**全ラインで共有するもの**を
+ * 分けて、ファイルの場所と中身を出す(現場の指摘: 2つは違う。設定部に明記してほしい)。
+ * 見出し・説明は `common/storage_places.py` が渡す(3機能で同じ言葉にする)。
+ */
+function renderStore(store) {
+  if (!store) return;
+  const el = (tag, cls, text) => {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const boxes = store.groups.map((g) => {
+    const box = el("section", `set-box store-box store-${g.kind}`);
+    box.dataset.store = g.kind;
+    const head = el("div", "set-box-head", g.title);
+    head.appendChild(el("span", `where where-${g.kind}`, store.badge[g.kind]));
+    box.append(head, el("p", "stamp", g.lead));
+    const table = el("table", "his-table store-table");
+    const thead = el("thead");
+    const hr = el("tr");
+    for (const text of ["何", "場所", "入っているもの"]) hr.appendChild(el("th", "", text));
+    thead.appendChild(hr);
+    const tbody = el("tbody");
+    for (const row of g.rows) {
+      const tr = el("tr");
+      tr.appendChild(el("td", "store-name", row.name));
+      const where = el("td", "store-path");
+      where.appendChild(el("code", "", row.path));
+      tr.appendChild(where);
+      const holds = el("td", "store-holds", row.holds);
+      if (row.note) holds.appendChild(el("span", "store-note", row.note));
+      tr.appendChild(holds);
+      tbody.appendChild(tr);
+    }
+    table.append(thead, tbody);
+    const wrap = el("div", "tscroll store-scroll");
+    wrap.appendChild(table);
+    box.appendChild(wrap);
+    if (g.note) box.appendChild(el("p", "stamp store-extra", g.note));
+    return box;
+  });
+  $("storeGroups").replaceChildren(el("p", "stamp store-intro", store.intro), ...boxes);
+}
+
 function renderDist(d) {
   if (!d) return;
   const skipped = d.skipped || [];

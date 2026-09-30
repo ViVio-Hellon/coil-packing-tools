@@ -40,6 +40,9 @@
   <button class="tab" role="tab" type="button" data-panel="distribution"
           id="tab-distribution" aria-controls="panel-distribution" aria-selected="false">
     配布設定</button>
+  <button class="tab" role="tab" type="button" data-panel="storage"
+          id="tab-storage" aria-controls="panel-storage" aria-selected="false">
+    保存先（このPC／共有）</button>
   <button class="tab" role="tab" type="button" data-panel="about"
           id="tab-about" aria-controls="panel-about" aria-selected="false">
     このアプリ</button>
@@ -58,7 +61,9 @@
 </div>
 
 <section class="sec">
-  <h2>取り込み元の置き場所</h2>
+  <h2>取り込み元の置き場所 <span class="where where-local">このPCに保存</span></h2>
+  <p class="setrow__d">どこを見るかは<b>このPCの設定ファイル</b>に保存し、次に起動したときも
+    引き継ぎます（ほかのPCは変わりません）。見に行く先のマスタ・仕掛台帳は<b>全ラインで共有</b>です。</p>
 
   {# 置き場所はパスワードが要る。**押す前に**言う #}
   <p class="status status--warn" id="pathLock" hidden></p>
@@ -67,9 +72,9 @@
 </section>
 
 <section class="sec">
-  <h2>取り込み</h2>
+  <h2>取り込み <span class="where where-local">このPCに保存</span></h2>
   <p class="setrow__d">
-    共有フォルダのマスタと仕掛台帳を、手元へ写します。
+    共有フォルダのマスタと仕掛台帳を、<b>このPCの作業用DB</b>へ写します。
     <b>写した時点の内容で計算します</b>ので、マスタが更新されたら
     押し直してください(日付が変わっても自動では写しません)。
   </p>
@@ -99,8 +104,10 @@
   <div class="tabpanel" id="panel-master" role="tabpanel" aria-labelledby="tab-master" hidden>
 
 <section class="sec">
-  <h2>パスワードを変える</h2>
+  <h2>パスワードを変える <span class="where where-local">このPCに保存</span></h2>
   <p class="setrow__d">
+    <b>このPCだけのパスワードです</b>（このPCの設定ファイルに保存）。変えても、ほかのPCは
+    変わりません。ほかのPCもそろえるときは「配布設定」に入れて配ります。<br>
     このパスワードは<b>マスタを直すとき</b>と<b>取り込み元の置き場所を
     変えるとき</b>の両方に使います。いまのパスワードを知っている人だけが
     変えられます。忘れたときは、設定ファイルの <code>admin_password</code>
@@ -120,7 +127,7 @@
 </section>
 
 <section class="sec">
-  <h2>マスタ管理</h2>
+  <h2>マスタ管理 <span class="where where-shared">全ラインで共有</span></h2>
   <p class="setrow__d">
     左で表を選ぶと中身が出ます。行を押すと1行ぶんが開きます。
   </p>
@@ -174,8 +181,9 @@
 
   <div class="tabpanel" id="panel-team" role="tabpanel" aria-labelledby="tab-team" hidden>
 <section class="sec">
-  <h2>ラインと担当者</h2>
+  <h2>ラインと担当者 <span class="where where-local">このPCに保存</span></h2>
   <p class="setrow__d">
+    <b>このPCに保存</b>し、次に起動したときも引き継ぎます（PCごとに別です）。
     ラインはチェックリストの表題に出ます。担当者は依頼者欄に出ます。
     帯からも変えられます。
   </p>
@@ -224,7 +232,7 @@
    中身は `/api/settings` の `distribution` から `settings.js` が描く #}
   <div class="tabpanel" id="panel-distribution" role="tabpanel" aria-labelledby="tab-distribution" hidden>
 <section class="sec">
-  <h2>いま置いてある配布設定 <span class="st" id="distState">確認中…</span></h2>
+  <h2>いま置いてある配布設定 <span class="st" id="distState">確認中…</span> <span class="where where-dist">アプリのフォルダ</span></h2>
   <p class="setrow__d" id="distMeta"></p>
   <table class="grid-table">
     <thead><tr><th>項目</th><th>値</th></tr></thead>
@@ -237,7 +245,7 @@
 </section>
 
 <section class="sec">
-  <h2>この端末の設定を配布設定にする</h2>
+  <h2>この端末の設定を配布設定にする <span class="where where-dist">アプリのフォルダ</span></h2>
   <p class="setrow__d">
     いまこの端末に入っている値をそのまま書き出します(前の中身は置き換えます)。
     配った先は<b>起動したときに読み込みます</b>。ただし<b>その端末にすでにある設定は
@@ -261,6 +269,16 @@
   </p>
 </section>
 </div><!-- /panel-distribution -->
+
+{# 保存先(このPC／共有)。現場の指摘: このPCで引き継いで使うもの(設定ファイル・作業用DB)と、
+   複数のPCで共有するもの(梱包資材マスタ)は違う。どこに何があるかを明記する。
+   中身は `/api/settings` の `storage`(`common/storage_places.py` の言葉)から `settings.js` が描く #}
+  <div class="tabpanel" id="panel-storage" role="tabpanel" aria-labelledby="tab-storage" hidden>
+<section class="sec" id="storage">
+  <h2>保存先（このPC／複数のPCで共有）</h2>
+  <div id="storeGroups"><p class="muted">読み込み中…</p></div>
+</section>
+</div><!-- /panel-storage -->
 
 {# 帯のバッジから飛んでくる先。番号の隣に、番号だけでは足りないことを置く #}
   <div class="tabpanel" id="panel-about" role="tabpanel" aria-labelledby="tab-about" hidden>

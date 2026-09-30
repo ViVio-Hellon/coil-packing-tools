@@ -18,6 +18,7 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from common import app_config as _integrated_app_config
+from common import storage_places
 from modules.packing_material_calculation.coil_tool import (admin_session, app_config, config, data_sync,
                        distribution, source_db, staff, user_settings)
 from modules.packing_material_calculation.coil_tool.presenters import master as master_presenter
@@ -204,7 +205,46 @@ def _view(conn) -> dict[str, Any]:
         "config_path": str(config.USER_CONFIG_PATH),
         "db_path": str(config.DB_PATH),
         "log_dir": str(config.LOG_DIR),
+        "storage": _storage(),
     }
+
+
+def _storage() -> dict[str, Any]:
+    """設定・データの保存先。**このPCに残るもの**と**複数のPCで共有するもの**を分けて出す。
+
+    現場の指摘: このPCで引き継いで使うものと、複数のPCで共有するものは違う。
+    設定部にそういうファイルがあることを明記してほしい。
+    **パスワードはこのPCのもの**(梱包明細は全ラインで共有)。取り違えないよう、ここでも言う。
+    """
+    P = storage_places.Place
+    config_path = config.USER_CONFIG_PATH
+    lot_dir = config.lot_db_dir()
+    return storage_places.Places(
+        local=[
+            P("設定ファイル", str(config_path),
+              "取り込み元の置き場所（梱包資材マスタ・仕掛台帳・予備・書き出し先をどこにするか）・"
+              "ライン・担当者・起動時の自動取り込み・パスワード（撹拌した値。このPCだけのもの）",
+              "" if config_path.exists() else "まだありません（設定を保存すると作ります）"),
+            P("作業用DB", str(config.DB_PATH),
+              "取り込んだマスタと仕掛台帳の写し（包装仕様・パレット・リプラサイズ・班員名簿・"
+              "仕掛引当・仕掛受注）・発注チェックリスト・発注履歴・取り込みの記録"),
+            storage_places.log_place(),
+        ],
+        shared=[
+            P("梱包資材マスタ", str(config.master_db_dir() / config.MATERIAL_DB_NAME),
+              "取り込み元。「マスタ管理」で直すとここへ書きます（手元の写しではなく元のファイル）"),
+            P("仕掛台帳", str(lot_dir),
+              "取り込み元（" + " / ".join(config.LOT_DB_FILES.values()) + "）",
+              "読むだけ（このツールは書き換えません）"),
+        ],
+        dist=[
+            P("配布設定", str(distribution.settings_path()),
+              "「配布設定」の面で書き出した値（"
+              + "・".join(label for _, label, _ in distribution.ITEMS) + "）"),
+        ],
+        shared_note=("取り込み元の場所（どこを見るか）は、このPCの設定ファイルに入っています。"
+                     "ここで変えても、ほかのPCは変わりません（ほかのPCもそろえるときは配布設定）。"),
+    ).to_dict()
 
 
 @bp.get("/api/settings")
