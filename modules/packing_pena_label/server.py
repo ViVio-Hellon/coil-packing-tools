@@ -268,12 +268,32 @@ def _html(html: str, status: int = 200) -> Response:
     return Response(html, status=status, mimetype="text/html")
 
 
+def record_incident(method: str, path: str, exc: BaseException) -> str:
+    """エラーの記録(`common/incidents.py`)を作って番号を返す(統合版 1.5.8)。
+
+    ペナラベルは移植元のまま自分で例外を受け止めて画面へ返すので、統合アプリの
+    エラーの受け口まで届かない。ここで記録して、**画面の文言に番号を付ける**。
+    """
+    from flask import g
+    from common import incidents
+    eid = incidents.new_id()
+    incidents.record("server", f"ペナラベル {method} {path}: {type(exc).__name__}: {exc}"[:300],
+                     shown=f"処理に失敗しました(エラー番号 {eid})", exc=exc, eid=eid)
+    try:
+        g.error_id = eid                           # 統合アプリの「断り・失敗」の行と二重にしない
+    except RuntimeError:
+        pass
+    return eid
+
+
 def _error_page(status: int, message: str, prefix: str) -> Response:
+    # 文言に例外の文字が入る(送られた値が混ざりうる)ので、**必ず伏せ字にしてから**埋める
+    from html import escape
     return _html(
         "<!doctype html><meta charset='utf-8'>"
         "<title>エラー</title>"
         "<body style=\"font-family:Meiryo,sans-serif;padding:24px\">"
-        f"<h1>{status}</h1><p>{message}</p>"
+        f"<h1>{status}</h1><p>{escape(message)}</p>"
         f"<p><a href='{prefix}/'>メイン画面へ戻る</a> / <a href='{prefix}/diag'>診断</a></p>",
         status)
 
@@ -392,7 +412,9 @@ def _page(ctx: AppContext, rel: str, prefix: str) -> Response:
         return _error_page(404, "ページが見つかりません。", prefix)
     except Exception as exc:                       # noqa: BLE001 - 画面に理由を出す
         log.exception("GET 失敗: %s", request.path)
-        return _error_page(500, "画面の生成に失敗しました: %s" % exc, prefix)
+        eid = record_incident("GET", request.path, exc)
+        return _error_page(500, "画面の生成に失敗しました: %s(エラー番号 %s)" % (exc, eid),
+                           prefix)
     finally:
         # スレッドは使い回されるので、必ず戻す
         p.pane_mode(False)

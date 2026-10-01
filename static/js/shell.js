@@ -93,6 +93,33 @@
     window.addEventListener("blur", function () { set(false); });
   })();
 
+  // ---------------------------------------------------------- ログとエラーの記録
+  // 上の帯の「ログ」。中身は /log(出力先の設定・エラーの一覧)。開くたびに読み直す。
+  // 機能の画面の隅に出たエラー番号の「中身を見る」からも開く(postMessage。同じ origin だけ)
+  (function () {
+    var btn = $("logBtn"), dlg = $("logDialog"), body = $("logBody"), close = $("logClose");
+    if (!btn || !dlg || !body) return;
+    var frame = null;
+    function open(id) {
+      if (!frame) {
+        frame = document.createElement("iframe");
+        frame.className = "logdlg__frame";
+        frame.title = "ログとエラーの記録";
+        body.appendChild(frame);
+      }
+      frame.src = "/log?embed=1&t=" + encodeURIComponent(window.SHELL.token) +
+                  (id ? "&id=" + encodeURIComponent(id) : "");
+      if (!dlg.open) { try { dlg.showModal(); } catch (e) { dlg.setAttribute("open", ""); } }
+    }
+    btn.addEventListener("click", function () { open(""); });
+    if (close) close.addEventListener("click", function () { dlg.close(); });
+    window.addEventListener("message", function (e) {
+      if (e.origin !== location.origin) return;
+      var d = e.data || {};
+      if (d.type === "cpt-open-log") open(String(d.id || ""));
+    });
+  })();
+
   // ---------------------------------------------------------- 印刷(Ctrl+P)
   // 3機能の画面は iframe の中にある。ブラウザの Ctrl+P は**一番外の文書**
   // (この外枠)を刷るので、そのままでは見出しとタブと、iframe の見えている

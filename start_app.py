@@ -271,6 +271,27 @@ def log_environment(mode: str) -> None:
         log().warning("版を読めませんでした: %s", exc)
     log().info("ローカル領域: %s", app_config.local_root())
     log_module_environment()
+    tidy_logs()
+
+
+def tidy_logs() -> None:
+    """ログの置き場所を残し、残す日数を過ぎたログとエラーの記録を消す(統合 1.0.12)。
+
+    **起動を止めない。** 消せなくても(共有が遅い・権限が無い)次の起動でまた試す。
+    """
+    try:
+        from common import incidents, logging_utils
+        state = logging_utils.status()
+        log().info("ログ: %s(PC %s・残す日数 %s 日)", state["dir"], state["pc_name"],
+                   state["keep_days"])
+        if state["problem"]:
+            log().warning("ログの出力先: %s", state["problem"])
+        removed = logging_utils.cleanup_old() + incidents.cleanup_old()
+        if removed:
+            log().info("古いログとエラーの記録を %d 件消しました(%s 日より前)",
+                       len(removed), state["keep_days"])
+    except Exception as exc:                        # noqa: BLE001 - 起動は止めない
+        log().warning("古いログを片付けられませんでした: %s", exc)
 
 
 #: 統合版では効かない、移植元のログの置き場所の環境変数(ログは統合アプリの1か所)

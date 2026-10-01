@@ -4,7 +4,7 @@
 
     python tools/e2e_scenarios.py                 # 一連の流れ → 交互に使う → 放置する
     python tools/e2e_scenarios.py --quick         # 放置を短くする(動きの確認用)
-    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / storage / master / idle のどれかだけ
+    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / storage / master / trail / idle のどれかだけ
 
 【何をするか】
 本物の起動(`start_app.py`)で統合アプリを立て、実ブラウザ(Chromium)で統合画面を開き、
@@ -36,6 +36,9 @@
    ファイルの場所つきで出ていること(`--shots フォルダ` で画面の写しも残す)
 5. マスタ管理(`--only master`)
    3機能のマスタ管理で、見出し(列名)を押すと昇順 → もう一度押すと降順に並ぶこと
+6. エラーの後追い(`--only trail`)
+   画面でわざとエラーを起こし、番号が出る → 「中身を見る」で記録(なぜなぜの欄つき)が開く。
+   上の帯の「ログ」で出力先を変えると、すぐ PC の名前のフォルダに書かれる → 既定に戻す
 
 【要るもの】Playwright と Chromium(`tools/smoke_shell.py` と同じ)。現場の PC には要らない。
 """
@@ -44,6 +47,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import socket
 import sqlite3
@@ -996,6 +1000,74 @@ def scenario_master(app: App, ctx, sh: Shell, note: dict) -> None:
 
 
 # ======================================================================
+# エラーの後追い: エラーの記録・ログの出力先(統合 1.0.12)
+# ======================================================================
+#: わざと起こすエラーの印(最後の「エラーが無い」の確かめから外す)
+TRAIL_MARK = "通し試験のわざとのエラー"
+
+
+def scenario_trail(app: App, ctx, sh: Shell, note: dict) -> None:
+    """画面でエラーが起きたら番号が出て、上の帯の「ログ」で中身(なぜなぜの欄つき)が見られる。
+    ログの出力先を画面で変えると、すぐその場所(PC の名前のフォルダ)に書かれる。"""
+    # --- 資材計算の画面で、わざと JavaScript のエラーを起こす
+    m = sh.tab("material")
+    m.evaluate("(mark) => setTimeout(() => { throw new Error(mark); }, 0)", TRAIL_MARK)
+    ok = wait_until(lambda: visible(m, "#cpt-error-notice"), 10)
+    shown = text(m, "#cpt-error-notice") if ok else ""
+    found = re.search(r"E\d{8}-\d{6}-[0-9A-F]{4}", shown)
+    check("後追い: 画面のエラーで番号が出る", bool(found), shown[:120])
+    if not found:
+        return
+    eid = found.group(0)
+    # 「中身を見る」→ 統合画面の「ログ」が開いて、その記録が出る
+    m.locator("#cpt-error-notice button", has_text="中身を見る").click()
+    ok = wait_until(lambda: sh.page.locator("#logDialog[open]").count() == 1, 10)
+    lf = None
+    if ok:
+        wait_until(lambda: sh.page.frame(url=re.compile(r"/log\?")) is not None, 10)
+        lf = sh.page.frame(url=re.compile(r"/log\?"))
+    shown_text = ""
+    if lf is not None:
+        wait_until(lambda: TRAIL_MARK in (lf.locator("#incText").text_content() or ""), 10)
+        shown_text = lf.locator("#incText").text_content() or ""
+    check("後追い: 「中身を見る」で記録が開く(なぜなぜの欄つき)",
+          eid in shown_text and TRAIL_MARK in shown_text and "なぜ1" in shown_text
+          and "資材計算" in shown_text, shown_text[:200])
+    check("後追い: 記録がファイルに残る",
+          (app.local / "logs" / "incidents" / f"{eid}.md").exists())
+    if lf is None:
+        return
+    # --- 出力先を変える(共有フォルダのつもり)→ PC の名前のフォルダに書かれる
+    lf.click('.tab[data-tab="settings"]')
+    wait_until(lambda: (lf.locator("#nowDir").text_content() or "") != "", 10)
+    share = app.home / "shared-logs"
+    lf.fill("#dirInput", str(share))
+    lf.click("#btnCheck")
+    wait_until(lambda: "書けます" in (lf.locator("#result").text_content() or ""), 10)
+    lf.click("#btnSave")
+    ok = wait_until(lambda: "保存しました" in (lf.locator("#result").text_content() or ""), 10)
+    now = lf.locator("#nowDir").text_content() or ""
+    check("後追い: 出力先を保存するとすぐ切り替わる(PC の名前のフォルダ)",
+          ok and now.startswith(str(share)) and now != str(share), now)
+    # 「ログ」の画面が開いているあいだは、ほかの画面は押せない(ダイアログ)。
+    # 切り替えたこと自体と、「ログ」の画面の問い合わせが新しい出力先に書かれる
+    lf.click('.tab[data-tab="today"]')
+    wait_until(lambda: list(share.glob("*/coil_packing_tools_*.log")), 10)
+    files = list(share.glob("*/coil_packing_tools_*.log"))
+    check("後追い: 新しい出力先にログが書かれる", bool(files) and any(
+        "ログの出力先" in f.read_text(encoding="utf-8") for f in files), [str(f) for f in files])
+    # 元へ戻す(ほかの段はこのPCの既定の場所を見る)
+    lf.click('.tab[data-tab="settings"]')
+    lf.click("#btnReset")
+    ok = wait_until(lambda: "保存しました" in (lf.locator("#result").text_content() or "")
+                    and (lf.locator("#nowDir").text_content() or "").startswith(
+                        str(app.local / "logs")), 10)
+    check("後追い: 既定に戻す", ok, lf.locator("#nowDir").text_content())
+    sh.page.click("#logClose")
+    check("後追い: 見たあとも3機能とも使える", sh.ready(10), sh.trouble())
+
+
+# ======================================================================
 # 3. 放置する
 # ======================================================================
 _HIDE = """() => {
@@ -1213,7 +1285,8 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--only", choices=("flow", "alternate", "multitab", "storage", "master", "idle"))
+    ap.add_argument("--only", choices=("flow", "alternate", "multitab", "storage", "master", "trail",
+                                       "idle"))
     ap.add_argument("--shots", default="", help="保存先の画面の写しを置くフォルダ")
     ap.add_argument("--quick", action="store_true", help="放置を短くする")
     ap.add_argument("--keep", action="store_true", help="試験用の置き場所を残す")
@@ -1252,15 +1325,20 @@ def main(argv=None) -> int:
             scenario_storage(app, ctx, sh, note, args.shots)
         if args.only in (None, "master"):
             scenario_master(app, ctx, sh, note)
+        if args.only in (None, "trail"):
+            scenario_trail(app, ctx, sh, note)
         if args.only in (None, "idle"):
             minutes = ({"visible": 125, "hidden": 125, "sleep": 30, "report": 110} if args.quick else
                        {"visible": 360, "hidden": 300, "sleep": 120, "report": 150})
             scenario_idle(app, ctx, sh, note, minutes)
+        # わざと起こしたエラー(「エラーの記録」の段)は数えない
+        errors = [e for e in errors if TRAIL_MARK not in e]
         check("画面の JavaScript のエラーが無い", not errors, errors[:3])
         br.close()
     app.stop()
     logs = app.logs()
-    bad = [l for l in logs.splitlines() if "| ERROR |" in l or "Traceback" in l]
+    bad = [l for l in logs.splitlines()
+           if ("| ERROR |" in l or "Traceback" in l) and TRAIL_MARK not in l]
     check("ログに ERROR・Traceback が無い", not bad, bad[:2])
     print("=" * 80)
     ng = [r for r in results if not r[1]]

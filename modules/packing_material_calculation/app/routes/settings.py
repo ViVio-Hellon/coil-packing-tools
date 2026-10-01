@@ -18,6 +18,7 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from common import app_config as _integrated_app_config
+from common import logging_utils as _common_logging
 from common import storage_places
 from modules.packing_material_calculation.coil_tool import (admin_session, app_config, config, data_sync,
                        distribution, source_db, staff, user_settings)
@@ -204,7 +205,8 @@ def _view(conn) -> dict[str, Any]:
         "distribution": distribution.summary(),
         "config_path": str(config.USER_CONFIG_PATH),
         "db_path": str(config.DB_PATH),
-        "log_dir": str(config.LOG_DIR),
+        # いま書いている場所(上の帯の「ログ」で変えられる。統合 1.0.12)
+        "log_dir": str(_common_logging.log_dir()),
         "storage": _storage(),
     }
 

@@ -161,8 +161,11 @@ class ApiRoutes:
             return 200, out
         except Exception as exc:                       # 予期しない失敗も画面へ返す
             log.exception("API 失敗: %s", path)
-            return 500, {"ok": False, "level": "error",
-                         "message": "処理に失敗しました: %s" % exc}
+            # 【統合版 1.5.8】エラーの記録を作り、番号を画面へ返す(後から追えるように)
+            from ...server import record_incident
+            eid = record_incident("POST", path, exc)
+            return 500, {"ok": False, "level": "error", "errorId": eid,
+                         "message": "処理に失敗しました: %s(エラー番号 %s)" % (exc, eid)}
 
     # ------------------------------------------------------------ マスタ管理
     def _master_tables(self, body):

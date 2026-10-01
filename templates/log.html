@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ログとエラーの記録 — {{ display_name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/log.css') }}">
+</head>
+<body class="{{ 'embed' if embed else '' }}">
+{#
+  ログとエラーの記録(統合 1.0.12。現場の指摘: エラー等の後追いが現状できない。ログを残し、
+  なぜなぜで分析できるようにしておいてほしい。ログ出力は設定でパス指定できるようにする)。
+  統合画面の上の帯の「ログ」から開く(中に埋め込む)。3機能で1つ。
+#}
+<main class="wrap">
+  {% if not embed %}<h1>ログとエラーの記録 <small>3機能共通</small></h1>{% endif %}
+
+  <div class="tabs" role="tablist" aria-label="ログの面">
+    <button type="button" role="tab" class="tab" data-tab="incidents" aria-selected="true">エラーの記録</button>
+    <button type="button" role="tab" class="tab" data-tab="today" aria-selected="false">今日のログ</button>
+    <button type="button" role="tab" class="tab" data-tab="settings" aria-selected="false">出力先の設定</button>
+  </div>
+
+  <!-- ============ エラーの記録 ============ -->
+  <section class="panel" id="panel-incidents" role="tabpanel">
+    <p class="lead">エラーが起きると、<b>1件ずつ記録</b>します(エラー番号 = 記録の名前)。
+      画面に出たエラー番号から探せます。記録には、<b>何が起きたか・止まった場所・
+      エラーまでの流れ・そのときの状態</b>と、<b>なぜなぜ分析の記入欄</b>が入っています。</p>
+    <div class="bar">
+      <input type="search" id="incQuery" placeholder="エラー番号・言葉で探す(例: E20261001 / 資材計算)"
+             aria-label="エラーの記録を探す">
+      <button type="button" class="btn" id="incReload">読み直す</button>
+      <span class="muted" id="incFolder"></span>
+    </div>
+    <div class="cols">
+      <div class="list">
+        <table class="grid">
+          <thead><tr><th>エラー番号</th><th>日時</th><th>機能</th><th>要約</th></tr></thead>
+          <tbody id="incRows"><tr><td colspan="4" class="muted">読み込み中…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="detail" id="incDetail" hidden>
+        <div class="detail__head">
+          <b id="incTitle"></b>
+          <button type="button" class="btn" id="incCopy">ファイルの場所をコピー</button>
+        </div>
+        <p class="muted mono" id="incPath"></p>
+        <pre class="text" id="incText"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 今日のログ ============ -->
+  <section class="panel" id="panel-today" role="tabpanel" hidden>
+    <p class="lead">今日のログの終わりのほうです(新しい行が下)。<code>[要求 R-…]</code> が同じ行は、
+      1つの操作の中の行です。</p>
+    <div class="bar">
+      <label><input type="radio" name="only" value="problems" checked> 警告とエラーだけ</label>
+      <label><input type="radio" name="only" value=""> すべて</label>
+      <button type="button" class="btn" id="todayReload">読み直す</button>
+      <span class="muted mono" id="todayPath"></span>
+    </div>
+    <pre class="text text--log" id="todayText">読み込み中…</pre>
+  </section>
+
+  <!-- ============ 出力先の設定 ============ -->
+  <section class="panel" id="panel-settings" role="tabpanel" hidden>
+    <div class="card">
+      <h2>ログの出力先 <span class="where">このPCに保存</span></h2>
+      <p class="lead">3機能のログとエラーの記録を出す場所です。<b>共有フォルダ</b>を指すと、
+        その下に <b>PC の名前のフォルダ</b>(<span class="mono" id="pcName"></span>)を作って書きます
+        (全ラインのPCが同じファイルに書くと、行が欠けるため)。
+        出力先に書けないとき(共有が切れた等)は、<b>このPCの既定の場所へ切り替えて</b>書き続けます。</p>
+      <dl class="facts">
+        <dt>いま書いている場所</dt><dd class="mono" id="nowDir"></dd>
+        <dt>今日のファイル</dt><dd class="mono" id="nowFile"></dd>
+        <dt>このPCの既定</dt><dd class="mono" id="defDir"></dd>
+      </dl>
+      <p class="warn" id="problem" hidden></p>
+      <p class="warn" id="envNote" hidden></p>
+      <label class="field">出力先(空にして保存すると、このPCの既定に戻ります)
+        <input type="text" id="dirInput" spellcheck="false" autocomplete="off"></label>
+      <label class="field field--short">ログとエラーの記録を残す日数
+        <input type="number" id="keepInput" min="14" max="3650" step="1">
+        <span class="muted" id="keepNote"></span></label>
+      <div class="bar">
+        <button type="button" class="btn" id="btnCheck">確かめる</button>
+        <button type="button" class="btn btn--primary" id="btnSave">保存</button>
+        <button type="button" class="btn" id="btnReset">既定に戻す</button>
+      </div>
+      <p class="result" id="result" role="status" hidden></p>
+      <p class="muted">この設定は<b>このPCに保存</b>します
+        (<span class="mono">%LOCALAPPDATA%\CoilPackingTools\data\settings.json</span>)。
+        ほかのPCは変わりません。保存するとすぐ切り替わります(再起動は要りません)。</p>
+    </div>
+  </section>
+</main>
+<script>
+  window.LOGPAGE = { token: {{ token|tojson }} };
+</script>
+<script src="{{ url_for('static', filename='js/log.js') }}"></script>
+<script src="{{ url_for('static', filename='js/error_report.js') }}" data-key="shell"
+        data-token="{{ token }}" defer></script>
+</body>
+</html>

@@ -126,3 +126,24 @@ button.ver:hover{ color:var(--bar-ink); }
   .pane__frame{ height:100vh; background:#fff; }
 }
 
+
+/* ---- ログとエラーの記録(上の帯の「ログ」) ---- */
+.btn--bar{
+  font:inherit; font-size:12px; padding:3px 12px; border-radius:6px; cursor:pointer;
+  background:var(--bar-face); color:var(--bar-ink); border:1px solid var(--bar-edge);
+}
+.btn--bar:hover{ background:#ffffff26; }
+.logdlg{
+  width:min(1100px, 96vw); height:min(820px, 92vh); padding:0; border:1px solid var(--tab-line);
+  border-radius:10px; background:var(--ground); color:var(--ink);
+}
+.logdlg[open]{ display:flex; flex-direction:column; }
+.logdlg::backdrop{ background:rgba(10,20,25,.45); }
+.logdlg__head{
+  display:flex; align-items:center; gap:10px; padding:8px 12px;
+  background:linear-gradient(115deg, var(--bar-a), var(--bar-b)); color:var(--bar-ink);
+}
+.logdlg__head span{ font-size:12px; color:var(--bar-muted); }
+.logdlg__head .btn{ margin-left:auto; }
+.logdlg__body{ flex:1 1 auto; display:flex; min-height:0; }
+.logdlg__frame{ flex:1 1 auto; width:100%; border:0; background:var(--ground); }

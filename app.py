@@ -4,6 +4,9 @@
     /api/health            起動確認(統合アプリの身元。多重起動の判定・待機画面が見る)
     /api/alive             統合画面の心拍(自動終了の見張りへ)
     /api/shutdown          安全な停止(トークン必須)
+    /log                   ログとエラーの記録(上の帯の「ログ」。出力先の設定・エラーの一覧)
+    /api/client-log        画面(ブラウザ)で起きたエラーの報告(`static/js/error_report.js`)
+    /api/log/...           ログの様子・設定・エラーの記録の一覧と中身(トークン必須)
     /details/...           梱包明細   (modules/packing_details)
     /pena/...              ペナラベル (modules/packing_pena_label)
     /material/...          資材計算   (modules/packing_material_calculation)
@@ -29,17 +32,22 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import threading
 import time
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from flask import (Blueprint, Flask, current_app, jsonify, redirect, render_template, request,
+from flask import (Blueprint, Flask, current_app, g, jsonify, redirect, render_template, request,
                    url_for)
+from markupsafe import escape
+from werkzeug.exceptions import HTTPException
 
-from common import app_config, boot_screen, idle_exit, modes, security, versions
+from common import (app_config, boot_screen, idle_exit, incidents, local_settings,
+                    logging_utils, modes, security, versions)
 from common.logging_utils import get_logger
 
 log = get_logger("coil_packing_tools", "app")
@@ -99,6 +107,8 @@ def create_app(mode: str = modes.MAIN, *, token: Optional[str] = None,
         PENA_REQUIRE_TOKEN=True,
         MODULES=[],
     )
+    # **最初に差し込む**(要求の印を付けてから、ほかの関門が断る ── 断った行にも印が付く)
+    _install_error_trail(app)
     security.install_common(app)
     app.register_blueprint(_shell_blueprint())
 
@@ -118,6 +128,7 @@ def create_app(mode: str = modes.MAIN, *, token: Optional[str] = None,
                               **{m["key"]: m["version"] for m in loaded}}
     app.config["VERSION_SET"] = versions.version_set(app.config["VERSIONS"])
     _install_tab_alive(app, [m["prefix"] for m in loaded])
+    _install_error_report(app, [m["prefix"] for m in loaded])
     _install_boot_redirect(app, loaded)
     _install_shutdown_guard(app, loaded)
 
@@ -184,6 +195,143 @@ def _install_tab_alive(app: Flask, prefixes: list) -> None:
         injected = inject_tab_alive(html, tag)
         if injected is not html:
             response.set_data(injected)
+        return response
+
+
+# ------------------------------------------------------------------
+# エラーの後追い(統合 1.0.12。現場の指摘: エラー等の後追いが現状できない。
+# ログを残し、なぜなぜで分析できるようにしておいてほしい)
+# ------------------------------------------------------------------
+#: 数秒ごとに来る要求(心拍・接続確認・進み具合)。行は DEBUG にする(INFO だと埋もれる)
+QUIET_TAILS = ("/api/health", "/api/alive", "/api/progress", "/api/client-log")
+QUIET_PARTS = ("/api/screen/", "/static/")
+
+#: 画面のエラーを受ける上限(1分あたり・1件の大きさ)。壊れた画面が送り続けても溢れない
+CLIENT_LOG_PER_MIN = 60
+CLIENT_LOG_MAX_BYTES = 16 * 1024
+
+ERROR_REPORT_MARK = "js/error_report.js"
+
+
+def _quiet(path: str) -> bool:
+    return path.endswith(QUIET_TAILS) or any(p in path for p in QUIET_PARTS)
+
+
+def _shown_message(response) -> str:
+    """断り・失敗の応答で、画面に出す文言(JSON の message / error.message)。"""
+    if response.mimetype != "application/json" or response.direct_passthrough:
+        return ""
+    try:
+        body = response.get_json(silent=True)
+    except Exception:                               # noqa: BLE001
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    err = body.get("error") if isinstance(body.get("error"), dict) else {}
+    return str(body.get("message") or err.get("message") or "")[:300]
+
+
+def _wants_json() -> bool:
+    accept = request.accept_mimetypes
+    return ("/api/" in request.path or request.method != "GET"
+            or (accept.accept_json and not accept.accept_html))
+
+
+def _install_error_trail(app: Flask) -> None:
+    """要求ごとの印・行・断りの文言、止まった処理のエラーの記録。
+
+    - **要求の印**(`R-xxxxxx`)を付ける。この要求の中の行には `[要求 R-…]` が付く
+      (`logging_utils._ContextFilter`)。1つの操作の流れを、並んで来る要求から拾える
+    - 要求を1行ずつ残す(何を・どれだけ掛かって・どう答えたか)。ペナラベルは移植元が
+      自分で残すので、ここでは残さない(二重にしない)
+    - **断り・失敗(400 番台・500 番台)は、画面に出した文言も残す** ── 「画面に何と
+      出ていたか」は、後から追うとき最初に要る
+    - 止まった処理(予期しない例外)は、**エラーの記録**を作り(`common/incidents.py`)、
+      画面へエラー番号を返す。以前は Flask の既定の 500(英語の1行)で、画面には
+      「通信に失敗しました (HTTP 500)」としか出ず、ログのどこを見ればよいか分からなかった
+    """
+    @app.before_request
+    def _mark():                                    # noqa: ANN202 - Flaskのフック
+        g.request_id = "R-" + secrets.token_hex(3).upper()
+        g.started = time.monotonic()
+        return None
+
+    @app.after_request
+    def _trail(response):                           # noqa: ANN202 - Flaskのフック
+        path = request.path
+        ms = round((time.monotonic() - getattr(g, "started", time.monotonic())) * 1000)
+        where = incidents.mask_url(request.full_path.rstrip("?"))
+        if not (path == "/pena" or path.startswith("/pena/")):
+            log.log(logging.DEBUG if _quiet(path) else logging.INFO,
+                    '"%s %s" %s %sms', request.method, where, response.status_code, ms)
+        if response.status_code >= 400 and not getattr(g, "error_id", ""):
+            shown = _shown_message(response)
+            if shown or response.status_code >= 500:
+                log.warning("断り・失敗 %s %s %s: %s", response.status_code, request.method,
+                            where, shown or "(文言なし)")
+        return response
+
+    @app.errorhandler(Exception)
+    def _unexpected(exc):                           # noqa: ANN202 - Flaskのフック
+        if isinstance(exc, HTTPException):
+            return exc
+        label = incidents._module_label(request.path)
+        title = f"{label} {request.method} {incidents.mask_url(request.path)}: " \
+                f"{type(exc).__name__}: {exc}"
+        eid = incidents.new_id()
+        message = server_error_message(eid)
+        incidents.record("server", title[:300], shown=message, exc=exc, eid=eid)
+        g.error_id = eid
+        if _wants_json():
+            return jsonify({"ok": False, "reason": "internal_error", "message": message,
+                            "error": {"code": "internal_error", "message": message},
+                            "error_id": eid}), 500
+        page = ("<!doctype html><meta charset='utf-8'><title>エラー</title>"
+                "<div style='font-family:Meiryo UI,sans-serif;padding:24px;line-height:1.8'>"
+                "<h2 style='margin:0 0 8px'>画面を作る途中でエラーが起きました</h2>"
+                f"<p>{escape(message)}</p>"
+                "<p><a href='javascript:location.reload()'>読み込み直す</a></p></div>")
+        return current_app.response_class(page, status=500, mimetype="text/html")
+
+
+def server_error_message(eid: str) -> str:
+    """止まった処理の、画面に出す文言。**エラー番号を必ず付ける**(現場の人が伝えられるように)。"""
+    if not eid:
+        return "処理中にエラーが起きました。"
+    return (f"処理中にエラーが起きました(エラー番号 {eid})。同じ操作をもう一度しても"
+            "だめなときは、この番号を伝えてください(上の帯の「ログ」で中身を見られます)。")
+
+
+def _install_error_report(app: Flask, prefixes: list) -> None:
+    """3機能の画面(HTML)に `static/js/error_report.js` を差し込む。
+
+    画面の JavaScript が止まると、**押しても何も起きない**だけで、どこにも残らなかった。
+    スクリプトは画面のエラー(例外・読み込めないファイル・届かなかった通信)を
+    `/api/client-log` へ送り、エラーの記録の番号を画面の隅に出す。各機能のコードは
+    触らずに、ここで差し込む(`tab_alive.js` と同じ)。統合画面の中(iframe)でも動く。
+    """
+    roots = tuple(p.rstrip("/") for p in prefixes if p)
+
+    @app.after_request
+    def _error_report(response):                    # noqa: ANN202 - Flaskのフック
+        if (request.method != "GET" or response.status_code != 200
+                or response.mimetype != "text/html"
+                or response.direct_passthrough or not response.is_sequence):
+            return response
+        path = request.path
+        if not any(path == r or path.startswith(r + "/") for r in roots):
+            return response
+        if request.args.get("pane") == "1":
+            return response
+        html = response.get_data(as_text=True)
+        if ERROR_REPORT_MARK in html:
+            return response
+        key = next(r for r in roots if path == r or path.startswith(r + "/")).lstrip("/")
+        tag = ('<script src="%s" data-key="%s" data-token="%s" defer></script>'
+               % (url_for("static", filename=ERROR_REPORT_MARK), key,
+                  escape(current_app.config["TOKEN"])))
+        at = html.lower().rfind("</body>")
+        response.set_data(html + tag if at < 0 else html[:at] + tag + html[at:])
         return response
 
 
@@ -383,7 +531,179 @@ def _shell_blueprint() -> Blueprint:
         threading.Timer(SHUTDOWN_DELAY_SEC, _shutdown_hook).start()
         return jsonify({"stopped": True, "message": "終了します"})
 
+    _log_routes(bp)
     return bp
+
+
+# ------------------------------------------------------------------
+# ログとエラーの記録(上の帯の「ログ」)
+# ------------------------------------------------------------------
+_client_log_times: list = []
+_client_log_lock = threading.Lock()
+
+
+def _need_token():
+    if not security.token_ok(current_app.config["TOKEN"]):
+        return security.error_json("bad_token", "この画面を開き直してください", 403)
+    return None
+
+
+def _log_routes(bp: Blueprint) -> None:
+    @bp.get("/log")
+    def log_page():
+        """ログとエラーの記録。統合画面の上の帯の「ログ」から開く(中に埋め込む)。"""
+        conf = current_app.config
+        return render_template("log.html", display_name=conf["DISPLAY_NAME"],
+                               token=conf["TOKEN"], embed=request.args.get("embed") == "1")
+
+    @bp.post("/api/client-log")
+    def client_log():
+        """画面(ブラウザ)で起きたエラー(`static/js/error_report.js`)。
+
+        例外・読み込めないファイル → **エラーの記録**を作って番号を返す(同じものは1件に
+        まとめる)。届かなかった通信(サーバが止まっていた)→ ログに1行(つながったあとで届く)。
+        """
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        if (request.content_length or 0) > CLIENT_LOG_MAX_BYTES:
+            return security.error_json("too_large", "大きすぎます", 413)
+        now = time.monotonic()
+        with _client_log_lock:
+            _client_log_times[:] = [t for t in _client_log_times if now - t < 60]
+            if len(_client_log_times) >= CLIENT_LOG_PER_MIN:
+                return security.error_json("too_many", "しばらく受けません", 429)
+            _client_log_times.append(now)
+        body = request.get_json(silent=True) or {}
+        kind = str(body.get("kind", "error"))[:20]
+        message = str(body.get("message", ""))[:500]
+        source = incidents.mask_url(str(body.get("source", "")))[:300]
+        page = incidents.mask_url(str(body.get("page", "")))[:300]
+        module = {"details": "梱包明細", "pena": "ペナラベル", "material": "資材計算",
+                  "shell": "統合画面"}.get(str(body.get("module", "")), "")
+        where = f"{source}:{body.get('line', '')}:{body.get('col', '')}" if source else ""
+        if kind == "offline":
+            log.warning("画面から: サーバに届かなかった通信 %s(%s 回。%s)", source or page,
+                        body.get("count", 1), message)
+            return jsonify({"ok": True})
+        facts = {"機能": module, "画面": page, "操作": str(body.get("action", ""))[:200],
+                 "例外": message, "場所": where, "スタック": str(body.get("stack", ""))[:4000],
+                 "ブラウザ": request.headers.get("User-Agent", "")[:200],
+                 "要求の印": getattr(g, "request_id", "")}
+        title = f"{module or '画面'}: {message}"[:300]
+        shown = "画面でエラーが起きました(記録しました)"
+        eid = incidents.record("screen", title, shown=shown, facts=facts,
+                               dedup_key=f"{kind}|{module}|{message}|{source}")
+        g.error_id = eid
+        return jsonify({"ok": True, "error_id": eid})
+
+    @bp.get("/api/log/status")
+    def log_status():
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        return jsonify({"ok": True, **logging_utils.status()})
+
+    @bp.post("/api/log/settings")
+    def log_settings():
+        """出力先・残す日数。`action` = check(確かめるだけ)/ save / reset(既定へ)。
+
+        **このPCに保存**(`common/local_settings.py`)。保存したらすぐ切り替える(再起動不要)。
+        """
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        body = request.get_json(silent=True) or {}
+        action = str(body.get("action", "save"))
+        text = str(body.get("log_dir", "") or "").strip()
+        if action == "reset":
+            text = ""
+        if len(text) > 400:
+            return security.error_json("bad_input", "長すぎます", 400)
+        target = logging_utils.target_for(text) if text else logging_utils.default_log_dir()
+        problem = logging_utils.writable_problem(target)
+        if action == "check":
+            return jsonify({"ok": not problem, "target": str(target),
+                            "message": problem or f"書けます。ここへ出します: {target}"})
+        if problem:
+            return jsonify({"ok": False, "target": str(target),
+                            "message": problem + "。保存しませんでした"}), 400
+        keep = body.get("keep_days")
+        try:
+            if keep not in (None, ""):
+                keep = int(keep)
+                if not (local_settings.LOG_KEEP_DAYS_MIN <= keep
+                        <= local_settings.LOG_KEEP_DAYS_MAX):
+                    return security.error_json(
+                        "bad_input", f"残す日数は {local_settings.LOG_KEEP_DAYS_MIN}〜"
+                        f"{local_settings.LOG_KEEP_DAYS_MAX} 日です", 400)
+            local_settings.save(local_settings.KEY_LOG_DIR, text)
+            if keep not in (None, ""):
+                local_settings.save(local_settings.KEY_LOG_KEEP_DAYS,
+                                    None if keep == local_settings.LOG_KEEP_DAYS_DEFAULT
+                                    else keep)
+        except ValueError:
+            return security.error_json("bad_input", "残す日数は数字で入れてください", 400)
+        except OSError as exc:
+            return jsonify({"ok": False, "message": f"設定を書けませんでした: {exc}"}), 500
+        state = logging_utils.apply_settings()
+        log.info("ログの設定を保存しました: 出力先=%s 残す日数=%s", text or "(このPCの既定)",
+                 state["keep_days"])
+        return jsonify({"ok": True, "message": f"保存しました。ここへ出します: {state['dir']}",
+                        **state})
+
+    @bp.get("/api/log/incidents")
+    def log_incidents():
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        return jsonify({"ok": True, "folder": str(incidents.folder()),
+                        "items": incidents.list_recent(200)})
+
+    @bp.get("/api/log/incidents/<eid>")
+    def log_incident(eid):
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        text = incidents.read(eid)
+        if text is None:
+            return security.error_json("not_found", "その番号の記録はありません", 404)
+        return jsonify({"ok": True, "id": eid, "path": str(incidents.folder() / f"{eid}.md"),
+                        "text": text})
+
+    @bp.get("/api/log/recent")
+    def log_recent():
+        """今日のログの終わりのほう。`only=problems` なら警告とエラーだけ。"""
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        only = request.args.get("only", "")
+        try:
+            limit = max(50, min(int(request.args.get("limit", "300")), 2000))
+        except ValueError:
+            limit = 300
+        path = Path(logging_utils.log_path_for(date.today()))
+        lines = _tail(path, 512 * 1024)
+        if only == "problems":
+            lines = [l for l in lines if " | WARNING | " in l or " | ERROR | " in l
+                     or " | CRITICAL | " in l]
+        return jsonify({"ok": True, "path": str(path),
+                        "lines": [incidents.mask_url(l) for l in lines[-limit:]]})
+
+
+def _tail(path: Path, max_bytes: int) -> list:
+    """ファイルの終わりの `max_bytes` を行で(大きなログを全部は読まない)。"""
+    try:
+        with path.open("rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - max_bytes))
+            data = f.read()
+    except OSError:
+        return []
+    text = data.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    return lines[1:] if size > max_bytes else lines
 
 
 def _busy_labels() -> list[str]:

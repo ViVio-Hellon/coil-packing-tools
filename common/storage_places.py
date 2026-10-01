@@ -94,5 +94,9 @@ class Places:
 def log_place() -> Place:
     """ログ(3機能で1つのフォルダ)。どの機能も同じ行を出す。"""
     from . import logging_utils
+    note = logging_utils.log_problem()
+    if not note and logging_utils.configured_log_dir():
+        note = "出力先を設定しています（その下の PC の名前のフォルダに書きます）"
     return Place("ログ", str(logging_utils.log_dir()),
-                 "動いた記録（3機能共通）。困ったときに調べる材料")
+                 "動いた記録とエラーの記録（3機能共通。なぜなぜ分析に使う）。"
+                 "出力先・残す日数は上の帯の「ログ」で変えられます", note)

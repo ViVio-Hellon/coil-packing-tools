@@ -47,6 +47,9 @@
       <p>統合ツールの版は配るたびに上がります。機能の版は、その機能の中身を変えたときだけ上がります。</p>
     </div>
     <div class="topbar__end">
+      {# ログとエラーの記録(3機能共通)。出力先の設定・エラーの一覧(なぜなぜ分析用) #}
+      <button class="btn btn--bar" type="button" id="logBtn" aria-haspopup="dialog"
+              title="ログとエラーの記録(出力先の設定・エラーの一覧)">ログ</button>
       <span class="conn" id="conn" title="バックエンド接続状態">接続確認中</span>
       <button class="btn btn--danger" type="button" id="quit"
               title="このアプリを終了します(3つの機能とも終わります)">終了</button>
@@ -68,6 +71,15 @@
 
   {% block main %}{% endblock %}
 </div>
+{# ログとエラーの記録。中身は /log(log.html)。開いたときに読む #}
+<dialog class="logdlg" id="logDialog" aria-label="ログとエラーの記録">
+  <div class="logdlg__head">
+    <b>ログとエラーの記録</b><span>3機能共通</span>
+    <button class="btn" type="button" id="logClose">閉じる</button>
+  </div>
+  {# 中身(iframe)は開いたときに作る(開かないうちは読みに行かない) #}
+  <div class="logdlg__body" id="logBody"></div>
+</dialog>
 <script>
   window.SHELL = {
     token: {{ token|tojson }},
@@ -78,6 +90,8 @@
   };
 </script>
 <script src="{{ url_for('static', filename='js/shell.js') }}"></script>
+<script src="{{ url_for('static', filename='js/error_report.js') }}" data-key="shell"
+        data-token="{{ token }}" defer></script>
 {% block script %}{% endblock %}
 </body>
 </html>
