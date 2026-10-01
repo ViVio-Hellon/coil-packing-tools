@@ -178,7 +178,9 @@ class ApiRoutes:
         try:
             return {"ok": True, **MA.page(self.wf.materials,
                                           str(body.get("table") or ""),
-                                          str(body.get("keyword") or ""))}
+                                          str(body.get("keyword") or ""),
+                                          sort=str(body.get("sort") or ""),
+                                          sort_dir=str(body.get("sortDir") or "asc"))}
         except MA.Refused as exc:
             return exc.status, {"ok": False, "level": "warn",
                                 "refuse": exc.kind, "message": exc.message}

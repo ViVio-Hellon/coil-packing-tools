@@ -18,11 +18,11 @@ from typing import Any, Dict, List, Optional
 #: アプリケーションID（ローカル領域のフォルダ名、多重起動判定、/api/health の識別子）
 APP_ID = "PackingPenaLabel"
 APP_NAME = "梱包ペナ ラベル・風袋計算"
-APP_VERSION = "1.5.6"
+APP_VERSION = "1.5.7"
 #: 版を切った日。画面のバージョン表示に添える。
 #: **中身を直したら必ずここを上げる**。上げ忘れると、
 #: 現場が「新しいファイルに差し替わったか」を画面から判断できない。
-APP_BUILD = "2026-09-30"
+APP_BUILD = "2026-10-01"
 #: 設定ファイルで上書きさせない項目（版はコード side の事実）
 CODE_ONLY_KEYS = frozenset({"version", "build"})
 DEFAULT_PORT = 8731

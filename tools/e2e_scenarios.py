@@ -4,7 +4,7 @@
 
     python tools/e2e_scenarios.py                 # 一連の流れ → 交互に使う → 放置する
     python tools/e2e_scenarios.py --quick         # 放置を短くする(動きの確認用)
-    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / storage / idle のどれかだけ
+    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / storage / master / idle のどれかだけ
 
 【何をするか】
 本物の起動(`start_app.py`)で統合アプリを立て、実ブラウザ(Chromium)で統合画面を開き、
@@ -34,6 +34,8 @@
 4. 保存先(`--only storage`)
    3機能の設定を開き、「このPCに保存(このPCで引き継ぐ)」と「複数のPCで共有」が
    ファイルの場所つきで出ていること(`--shots フォルダ` で画面の写しも残す)
+5. マスタ管理(`--only master`)
+   3機能のマスタ管理で、見出し(列名)を押すと昇順 → もう一度押すと降順に並ぶこと
 
 【要るもの】Playwright と Chromium(`tools/smoke_shell.py` と同じ)。現場の PC には要らない。
 """
@@ -151,6 +153,12 @@ def make_sources(home: Path) -> None:
                             "新記号": mark, "Ｗ": str(w)})
     _source(m, ("種類", "巾下限", "巾上限", "丈下限", "丈上限", "新記号", "Ｗ"), pallets,
             table="パレット")
+    # ペナラベルのマスタ管理が見る表(並べ替えの試験で使う。ふだんのペナラベルは CSV で動く)
+    _source(m, ("管理番号", "梱包資材名", "単位質量", "係数"),
+            [{"管理番号": str(i), "梱包資材名": n, "単位質量": w, "係数": "1"}
+             for i, (n, w) in enumerate((("テスラピン", "0.5"), ("ﾊｰﾄﾞﾎﾞｰﾄﾞ", "1.25"),
+                                         ("ｽﾄﾚｯﾁ", "0.08"), ("アングル", "12.5")), 1)],
+            table="資材重量")
     _source(m, ("リプラ長さ", "長さ"),
             [{"リプラ長さ": str(n), "長さ": str(n)} for n in (700, 800, 900, 950, 1000, 1050, 1100, 1150)],
             table="リプラサイズ")
@@ -889,6 +897,105 @@ def scenario_storage(app: App, ctx, sh: Shell, note: dict, shots: str = "") -> N
 
 
 # ======================================================================
+# マスタ管理: 見出しを押して並べ替える(3機能。統合 1.0.11)
+# ======================================================================
+_GRID = """([head, body]) => {
+  const ths = [...document.querySelectorAll(head + ' th')];
+  const names = ths.map(th => (th.querySelector('button.sortbtn')?.firstChild?.textContent
+                               ?? th.textContent).trim());
+  const sorted = ths.map(th => th.getAttribute('aria-sort') || '');
+  const rows = [...document.querySelectorAll(body + ' tr')]
+      .map(tr => [...tr.children].map(td => td.textContent.trim()));
+  return {names, sorted, rows};
+}"""
+
+
+def _sort_check(fr, label: str, head: str, body: str) -> None:
+    """見出しを押して昇順 → もう一度押して降順。並びと ▲▼(aria-sort)を確かめる。
+
+    **文字の列**と**数字の列**を1つずつ選んで押す。数字の列は数の大きさで並ぶこと
+    (取り込み元は数字も文字で持つので、文字の並びだと 800 が 1350 の後ろへ来ていた)。
+    """
+    ok = wait_until(lambda: fr.locator(head + " button.sortbtn").count() > 0
+                    and fr.locator(body + " tr").count() > 1, 15)
+    check(f"マスタ: {label} 見出しが押せる(並べ替えのボタン)", ok)
+    if not ok:
+        return
+    grid = fr.evaluate(_GRID, [head, body])
+
+    def num(v):
+        return v.replace(".", "", 1).lstrip("-").isdigit()
+
+    def column(col):
+        return [r[col] for r in grid["rows"] if col < len(r)]
+
+    def is_text(col):
+        values = column(col)
+        return len(set(values)) > 1 and all(values) and not all(num(v) for v in values)
+
+    def is_number(col):
+        values = column(col)
+        # 桁の違う数字が混ざる列(文字の並びと数の並びが食い違う)を選ぶ
+        return (len(set(values)) > 1 and all(values) and all(num(v) for v in values)
+                and len({len(v.split(".")[0].lstrip("-")) for v in values}) > 1)
+
+    picks = [("文字", next((i for i in range(len(grid["names"])) if is_text(i)), None),
+              lambda vs, rev: sorted(vs, reverse=rev)),
+             ("数字", next((i for i in range(len(grid["names"])) if is_number(i)), None),
+              lambda vs, rev: sorted(vs, key=float, reverse=rev))]
+    for kind, col, expect in picks:
+        check(f"マスタ: {label} {kind}の列がある", col is not None, grid["names"])
+        if col is None:
+            continue
+        name = grid["names"][col]
+        for want, rev in (("ascending", False), ("descending", True)):
+            fr.locator(head + " th").nth(col).locator("button.sortbtn").click()
+            ok = wait_until(
+                lambda: fr.evaluate(_GRID, [head, body])["sorted"][col] == want, 10)
+            grid = fr.evaluate(_GRID, [head, body])
+            values = column(col)
+            check(f"マスタ: {label} 「{name}」({kind})で{'降順' if rev else '昇順'}に並ぶ",
+                  ok and values == expect(values, rev), values[:8])
+
+
+def scenario_master(app: App, ctx, sh: Shell, note: dict) -> None:
+    """3機能のマスタ管理で、見出し(列名)を押すと並べ替わること(現場の指摘)。"""
+    # --- 梱包明細: マスタ管理(見るだけ)
+    d = sh.tab("details")
+    d.click("#btnMaster")
+    _sort_check(d, "梱包明細", "#mHead", "#mRows")
+    d.click("#btnMasterClose")
+
+    # --- 資材計算: 設定 → マスタ管理
+    m = sh.tab("material")
+    m.click('.rail__item[href*="/settings"]')
+    material_ready(m)
+    m.click("#tab-master")
+    m.locator("#mTables button", has_text="パレット").first.click()
+    _sort_check(m, "資材計算", "#mHead", "#mRows")
+    m.locator(".rail__item").first.click()
+    material_ready(m)
+
+    # --- ペナラベル: 設定 → マスタ管理(SQLite の資材マスタを指したときだけ見られる)
+    p = sh.tab("pena")
+    master_db = str(app.home / "master" / "梱包資材マスタ.sqlite3")
+    res = _api(p, "/pena/api/settings/save",
+               {"values": {"material_db_file": master_db}, "password": "nisk"})
+    check("マスタ: ペナラベル 資材マスタ(SQLite)を指す", res["status"] == 200, res["body"])
+    p.click('.appbar-nav a[href$="/settings"]')
+    wait_until(lambda: visible(p, '.subtab[data-sub="master"]'), 10)
+    p.click('.subtab[data-sub="master"]')
+    _sort_check(p, "ペナラベル", "#mTbl thead", "#mTbl tbody")
+    # 元へ戻す(ほかの段はペナラベルを CSV で動かしている)
+    res = _api(p, "/pena/api/settings/save",
+               {"values": {"material_db_file": ""}, "password": "nisk"})
+    check("マスタ: ペナラベル 資材マスタの設定を元へ戻す", res["status"] == 200, res["body"])
+    p.click('.appbar-nav a[data-pane="home"]')
+    pena_ready(p)
+    check("マスタ: 見たあとも3機能とも使える", sh.ready(10), sh.trouble())
+
+
+# ======================================================================
 # 3. 放置する
 # ======================================================================
 _HIDE = """() => {
@@ -1106,7 +1213,7 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--only", choices=("flow", "alternate", "multitab", "storage", "idle"))
+    ap.add_argument("--only", choices=("flow", "alternate", "multitab", "storage", "master", "idle"))
     ap.add_argument("--shots", default="", help="保存先の画面の写しを置くフォルダ")
     ap.add_argument("--quick", action="store_true", help="放置を短くする")
     ap.add_argument("--keep", action="store_true", help="試験用の置き場所を残す")
@@ -1143,6 +1250,8 @@ def main(argv=None) -> int:
             scenario_multitab(app, ctx, sh, note)
         if args.only in (None, "storage"):
             scenario_storage(app, ctx, sh, note, args.shots)
+        if args.only in (None, "master"):
+            scenario_master(app, ctx, sh, note)
         if args.only in (None, "idle"):
             minutes = ({"visible": 125, "hidden": 125, "sleep": 30, "report": 110} if args.quick else
                        {"visible": 360, "hidden": 300, "sleep": 120, "report": 150})

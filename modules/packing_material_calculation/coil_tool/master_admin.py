@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from common import sql_sort
 from . import admin_session, config, data_sync, db, import_specs, source_db
 from .logging_utils import get_logger
 
@@ -511,12 +512,15 @@ def _order(names: list[str], sort: str, sort_dir: str) -> tuple[str, str]:
     `sort` が実在の列でなければ、押していないのと同じ(`rowid` の
     既定順)へ静かに戻す ── マスタの列は取り込み元の都合で増減するので、
     もう無い列を指した並び替えを断ると「さっきまで押せたのに」が起きる。
+
+    【統合版】**数字は数の大きさで並べる**(`common/sql_sort.py`)。取り込み元は数字も
+    文字で持っているので、そのままだと 800 が 1350 の後ろへ来ていた(通し試験で見つけた)。
     """
     if sort and sort in names:
         direction = "DESC" if sort_dir == "desc" else "ASC"
         quoted = source_db.quote_identifier(sort)
         # 同値が並ぶと表示順がページごとに揺れるので、rowidで確定させる
-        return f"ORDER BY {quoted} {direction}, rowid ASC", sort
+        return f"ORDER BY {sql_sort.order_terms(quoted, direction)}, rowid ASC", sort
     return "ORDER BY rowid ASC", ""
 
 

@@ -153,6 +153,22 @@ def test_並び替えられる(looking):
     assert body["page"]["rows"][0]["包装仕様NO"] == "1C0001"
 
 
+def test_数字の列は数の大きさで並ぶ(looking, sandbox):
+    """取り込み元は数字も文字(TEXT)で持つ。文字の並びだと 800 が 1350 の後ろへ来る(統合版で直した)。
+
+    空はいちばん後ろ(昇順でも降順でも)。
+    """
+    conn = sqlite3.connect(sandbox / "master" / config.MATERIAL_DB_NAME)
+    conn.executemany('INSERT INTO "リプラサイズ" ("リプラ長さ","長さ") VALUES (?,?)',
+                     [("1350", "1350"), ("800", "800"), ("", ""), ("1000", "1000")])
+    conn.commit()
+    conn.close()
+    up = browse(looking, table="リプラサイズ", sort="長さ", sort_dir="asc")
+    assert [r["長さ"] for r in up["page"]["rows"]] == ["800", "900", "1000", "1350", ""]
+    down = browse(looking, table="リプラサイズ", sort="長さ", sort_dir="desc")
+    assert [r["長さ"] for r in down["page"]["rows"]] == ["1350", "1000", "900", "800", ""]
+
+
 def test_知らない列での並び替えは既定へ静かに戻す(looking):
     """もう無い列を指した並び替えを断ると「さっきまで押せたのに」になる"""
     body = browse(looking, table="包装仕様", sort="そんな列はない")

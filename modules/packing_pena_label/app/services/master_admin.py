@@ -223,9 +223,33 @@ def tables(repo) -> List[dict]:
     return out
 
 
+def _order(cols: List[str], sort: str, sort_dir: str) -> Tuple[str, str]:
+    """見出しクリックの並び替え(梱包明細・資材計算のマスタ管理と同じ決まり)。
+
+    **列名は実在する列だけ**を許す ── 列名をそのまま ``ORDER BY`` に組み込むため。
+    実在しない列(表を切り替えた・列が消えた)を指したら、押していないのと同じ
+    (取り込み元の並び = rowid)へ静かに戻す。同じ値が並ぶと表示順が揺れるので、
+    rowid で確定させる。
+
+    **数字は数の大きさで並べる**(``common/sql_sort.py``)。資材マスタは数字も文字で
+    持っていることがあり、そのままだと 10 が 9 より前へ来る。空はいちばん後ろ。
+    """
+    from common import sql_sort
+    if sort and sort in cols:
+        direction = "DESC" if sort_dir == "desc" else "ASC"
+        return (" ORDER BY %s, rowid ASC" % sql_sort.order_terms(_quote(sort), direction),
+                sort)
+    return " ORDER BY rowid", ""
+
+
 def page(repo, table: str, keyword: str = "",
-         limit: int = ROW_LIMIT) -> dict:
-    """表の中身。**全部は出さず、出さなかった分は数で言う。**"""
+         limit: int = ROW_LIMIT, sort: str = "", sort_dir: str = "asc") -> dict:
+    """表の中身。**全部は出さず、出さなかった分は数で言う。**
+
+    ``sort`` を渡すと、その列で並べ替える(見出しを押したとき。``sort_dir`` は
+    ``asc`` / ``desc``)。全部を並べ替えてから先頭 ``limit`` 件を出すので、
+    出していない行も含めた並びになる。
+    """
     table = _check_table(table)
     path = source_path(repo)
     if not path or not os.path.exists(path):
@@ -249,9 +273,10 @@ def page(repo, table: str, keyword: str = "",
             where = " WHERE " + " OR ".join(parts)
             args = ["%%%s%%" % kw] * len(cols)
 
+        order, used = _order(cols, str(sort or ""), str(sort_dir or "asc"))
         shown = conn.execute(
-            "SELECT %s FROM %s%s ORDER BY rowid LIMIT ?"
-            % (sel, _quote(table), where), args + [int(limit)]).fetchall()
+            "SELECT %s FROM %s%s%s LIMIT ?"
+            % (sel, _quote(table), where, order), args + [int(limit)]).fetchall()
         matched = total
         if kw:
             matched = conn.execute(
@@ -273,6 +298,8 @@ def page(repo, table: str, keyword: str = "",
         "fixedRows": fixed_rows(table),
         "rowKey": ROW_KEY,
         "rows": rows,
+        "sort": used,
+        "sortDir": ("desc" if sort_dir == "desc" else "asc") if used else "asc",
         "total": total,
         "matched": matched,
         "note": note,

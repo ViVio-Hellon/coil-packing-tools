@@ -1,7 +1,7 @@
 {
   "app_id": "nlm.packing-details",
   "display_name": "コイル梱包明細打ち出しシステム",
-  "version": "0.13.7",
+  "version": "0.13.8",
   "monitor_level": 1,
 
   "local_dir_name": "PackingDetails",

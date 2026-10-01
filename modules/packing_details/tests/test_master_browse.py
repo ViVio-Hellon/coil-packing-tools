@@ -106,6 +106,16 @@ class MasterTest(unittest.TestCase):
                 self.assertEqual([r["コード"] for r in view.rows], ["A", "B", "C"])
         self.assertEqual(_q_count(self.path, "品"), 3)
 
+    def test_数字の列は数の大きさで並ぶ(self):
+        """取り込み元は数字も文字(TEXT)で持つ。文字の並びだと 800 が 1350 の後ろへ来る(統合版で直した)。"""
+        _add_table(self.path, "CREATE TABLE 幅 (コード TEXT, 巾上限 TEXT)",
+                   [("A", "1350"), ("B", "800"), ("C", ""), ("D", "1000"), ("E", "900")],
+                   "INSERT INTO 幅 VALUES (?, ?)")
+        up = master_browse.browse("master", "幅", sort="巾上限", sort_dir="asc")
+        self.assertEqual([r["巾上限"] for r in up.rows], ["800", "900", "1000", "1350", ""])
+        down = master_browse.browse("master", "幅", sort="巾上限", sort_dir="desc")
+        self.assertEqual([r["巾上限"] for r in down.rows], ["1350", "1000", "900", "800", ""])
+
     def test_見るだけ_ファイルを書き換えない(self):
         before = _hash(self.path)
         master_browse.browse("master", "PalletMaster", query="P", sort="名前")

@@ -46,6 +46,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from common import sql_sort
 from . import config, shared_settings, slip_history, source_db
 from .logging_utils import get_logger
 
@@ -308,12 +309,16 @@ def _order(names: list[str], sort: str, sort_dir: str, *,
     戻す ── 列は取り込み元の都合で増減するので、もう無い列を指した並び替えを
     断ると「さっきまで押せたのに」が起きる(総合ツールと同じ)。
     既定の並びは `default` の列(あれば)、それから rowid。
+
+    【統合版】**数字は数の大きさで並べる**(`common/sql_sort.py`)。取り込み元は数字も
+    文字で持っているので、そのままだと 800 が 1350 の後ろへ来ていた(通し試験で見つけた)。
     """
     if sort and sort in names:
         direction = "DESC" if sort_dir == "desc" else "ASC"
         # 同値が並ぶと表示順が揺れるので、rowid で確定させる
         tail = ", rowid ASC" if rowid else ""
-        return f" ORDER BY {source_db.quote_identifier(sort)} {direction}{tail}", sort
+        terms = sql_sort.order_terms(source_db.quote_identifier(sort), direction)
+        return f" ORDER BY {terms}{tail}", sort
     direction = "DESC" if newest_first else "ASC"
     keys = []
     if default and default in names:

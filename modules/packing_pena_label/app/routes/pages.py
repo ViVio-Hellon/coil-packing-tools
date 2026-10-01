@@ -1483,6 +1483,8 @@ class PageRoutes:
             '<button type="button" class="btn" id="mNew">行を足す</button>'
             '</div>'
             '<p class="hint" id="mNote"></p>'
+            '<p class="hint">見出し（列名）を押すと並べ替えます'
+            '（もう一度押すと逆順。数字は数の大きさで並びます）。</p>'
             '<div class="scroll"><table class="tbl" id="mTbl">'
             '<thead><tr></tr></thead><tbody></tbody></table></div>'
             '</div>'
@@ -1818,7 +1820,8 @@ class PageRoutes:
   // 行の名前ではない（重複も欠番もありうる）。ここを取り違えると
   // 「直したつもりが別の行だった」になる。
   var M = {table:"", columns:[], editableColumns:[], fixedRows:false,
-           rowKey:"__行", rows:[], editable:false, cur:null};
+           rowKey:"__行", rows:[], editable:false, cur:null,
+           sort:"", sortDir:"asc"};
 
   // マスタを直すと全員の計算・印刷に影響するので、合言葉を使う。
   // パス設定と同じ欄を読み、空なら必要になった時点で聞く。
@@ -1866,8 +1869,11 @@ class PageRoutes:
 
   function mLoadRows(){
     var table = mEl("mTable").value;
+    // 表を切り替えたら並び替えは外す(別の表の列名は意味が無い)
+    if (table !== M.table) { M.sort = ""; M.sortDir = "asc"; }
     return pplPost("/api/master/rows",
-                   {table: table, keyword: mEl("mKeyword").value})
+                   {table: table, keyword: mEl("mKeyword").value,
+                    sort: M.sort, sortDir: M.sortDir})
       .then(function(j){
         var head = mEl("mTbl").querySelector("thead tr");
         var body = mEl("mTbl").querySelector("tbody");
@@ -1878,6 +1884,7 @@ class PageRoutes:
         }
         M.table = j.table; M.columns = j.columns; M.rowKey = j.rowKey;
         M.rows = j.rows; M.editable = j.editable;
+        M.sort = j.sort || ""; M.sortDir = j.sortDir || "asc";
         M.editableColumns = j.editableColumns || j.columns;
         M.fixedRows = !!j.fixedRows;
         mEl("mNew").disabled = !j.editable || M.fixedRows;
@@ -1886,9 +1893,24 @@ class PageRoutes:
           (j.whyNot ? j.whyNot + " " : "") +
           (j.note || ("全 " + j.total + " 件"));
 
+        // 見出しを押すと、その列で並べ替える(もう一度押すと逆順)。
+        // **サーバで並べ替える** ── 出していない行(200件より後)も含めた並びにするため
         j.columns.forEach(function(c){
           var th = document.createElement("th");
-          th.textContent = c; head.appendChild(th);
+          var b = document.createElement("button");
+          b.type = "button"; b.className = "sortbtn"; b.dataset.column = c;
+          b.textContent = c;
+          b.title = "押すとこの列で並べ替えます（もう一度押すと逆順）";
+          if (M.sort === c) {
+            var mark = document.createElement("span");
+            mark.className = "sortmark";
+            mark.setAttribute("aria-hidden", "true");
+            mark.textContent = M.sortDir === "asc" ? "▲" : "▼";
+            b.appendChild(mark);
+            th.setAttribute("aria-sort", M.sortDir === "asc" ? "ascending" : "descending");
+          }
+          b.addEventListener("click", function(){ mSortBy(c); });
+          th.appendChild(b); head.appendChild(th);
         });
         var thx = document.createElement("th");
         thx.textContent = ""; head.appendChild(thx);
@@ -1911,6 +1933,12 @@ class PageRoutes:
           body.appendChild(tr);
         });
       });
+  }
+
+  function mSortBy(column){
+    M.sortDir = (M.sort === column && M.sortDir === "asc") ? "desc" : "asc";
+    M.sort = column;
+    return mLoadRows();
   }
 
   function mOpen(row){

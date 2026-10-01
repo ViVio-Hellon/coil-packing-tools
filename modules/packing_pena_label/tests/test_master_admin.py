@@ -81,6 +81,56 @@ class MasterAdminServiceTest(unittest.TestCase):
         self.assertIn("300", p["note"])
         self.assertIn(str(MA.ROW_LIMIT), p["note"])
 
+    # ---------------------------------------------------- 並べ替え(見出しクリック)
+    def test_sort_by_a_column_both_ways(self):
+        """見出しを押すとその列で並べ替える。もう一度押すと逆順(現場の指摘)。"""
+        names = lambda p: [r["梱包資材名"] for r in p["rows"]]
+        up = MA.page(self.repo, "資材重量", sort="単位質量", sort_dir="asc")
+        self.assertEqual(names(up), ["ｽﾄﾚｯﾁ", "テスラピン", "ﾊｰﾄﾞﾎﾞｰﾄﾞ"])
+        self.assertEqual((up["sort"], up["sortDir"]), ("単位質量", "asc"))
+        down = MA.page(self.repo, "資材重量", sort="単位質量", sort_dir="desc")
+        self.assertEqual(names(down), ["ﾊｰﾄﾞﾎﾞｰﾄﾞ", "テスラピン", "ｽﾄﾚｯﾁ"])
+        self.assertEqual(down["sortDir"], "desc")
+
+    def test_numbers_kept_as_text_sort_by_value(self):
+        """資材マスタは数字も文字で持つことがある。文字の並びだと 10 が 9 より前へ来る。"""
+        make_master(self.db, [(1, "A", "10", "1"), (2, "B", "9", "1"),
+                              (3, "C", "0.5", "1"), (4, "D", "", "1")])
+        up = MA.page(self.repo, "資材重量", sort="単位質量", sort_dir="asc")
+        self.assertEqual([r["単位質量"] for r in up["rows"]], ["0.5", "9", "10", ""])
+        down = MA.page(self.repo, "資材重量", sort="単位質量", sort_dir="desc")
+        self.assertEqual([r["単位質量"] for r in down["rows"]], ["10", "9", "0.5", ""])
+
+    def test_without_sort_rows_keep_the_source_order(self):
+        p = MA.page(self.repo, "資材重量")
+        self.assertEqual([r["管理番号"] for r in p["rows"]], ["1", "2", "3"])
+        self.assertEqual(p["sort"], "")
+
+    def test_unknown_column_falls_back_quietly(self):
+        """実在しない列(表を切り替えた・列が消えた)は、押していないのと同じ並びへ。
+
+        列名は ORDER BY に組み込むので、実在する列だけを許す。
+        """
+        for bad in ("無い列", '管理番号" DESC; DROP TABLE 資材重量; --'):
+            p = MA.page(self.repo, "資材重量", sort=bad, sort_dir="desc")
+            self.assertEqual([r["管理番号"] for r in p["rows"]], ["1", "2", "3"], bad)
+            self.assertEqual(p["sort"], "")
+        self.assertEqual(MA.page(self.repo, "資材重量")["total"], 3, "表は無事")
+
+    def test_sort_covers_rows_that_are_not_shown(self):
+        """並べ替えてから先頭を出す。出していない行(200件より後)も含めた並び。"""
+        rows = [(i, "資材%03d" % i, "0.1", "1") for i in range(1, 301)]
+        make_master(self.db, rows)
+        p = MA.page(self.repo, "資材重量", sort="管理番号", sort_dir="desc")
+        self.assertEqual(p["rows"][0]["管理番号"], "300")
+        self.assertEqual(len(p["rows"]), MA.ROW_LIMIT)
+
+    def test_sort_and_keyword_together(self):
+        p = MA.page(self.repo, "資材重量", keyword="1", sort="梱包資材名", sort_dir="desc")
+        self.assertEqual(p["matched"], 3)
+        self.assertEqual([r["梱包資材名"] for r in p["rows"]],
+                         sorted([r["梱包資材名"] for r in p["rows"]], reverse=True))
+
     def test_unknown_table_is_refused(self):
         with self.assertRaises(MA.Refused) as cm:
             MA.page(self.repo, "班員名簿")
@@ -216,6 +266,20 @@ class MasterAdminHttpTest(unittest.TestCase):
         st, j = self.post("/api/master/rows", {"table": "資材重量"})
         self.assertEqual(st, 200)
         self.assertIn("梱包資材名", j["columns"])
+
+    def test_rows_can_be_sorted(self):
+        st, j = self.post("/api/master/rows",
+                          {"table": "資材重量", "sort": "管理番号", "sortDir": "desc"})
+        self.assertEqual(st, 200)
+        self.assertEqual((j["sort"], j["sortDir"]), ("管理番号", "desc"))
+        ids = [int(r["管理番号"]) for r in j["rows"]]
+        self.assertEqual(ids, sorted(ids, reverse=True))
+
+    def test_settings_page_has_sortable_headers(self):
+        with urllib.request.urlopen(self.base + "/settings", timeout=20) as r:
+            html = r.read().decode("utf-8")
+        self.assertIn("mSortBy", html)
+        self.assertIn('className = "sortbtn"', html)
 
     def test_unknown_table_is_422(self):
         st, j = self.post("/api/master/rows", {"table": "アクセス権限"})
