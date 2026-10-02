@@ -136,6 +136,7 @@ def _storage() -> dict:
             P("配布設定", str(distribution.settings_path()),
               "「配布設定」の面で書き出した値（"
               + "・".join(label for _, label, _ in distribution.ITEMS) + "）"),
+            storage_places.log_dist_place(),
         ],
         shared_note=("共有フォルダの場所（どこを見るか）は、このPCの設定ファイルに入っています。"
                      "「置き場所・取り込み」で変えても、ほかのPCは変わりません"

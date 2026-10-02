@@ -31,6 +31,7 @@ import os
 import sys
 import threading
 import time
+import types
 import webbrowser
 from pathlib import Path
 from typing import Optional
@@ -255,10 +256,29 @@ def log():
     return _log
 
 
+def apply_common_distribution():
+    """配布設定(共通: ログの出力先・残す日数)を読み込む(統合 1.0.14)。
+
+    **起動のログの1行目より前に呼ぶ** ── 配られた出力先へ、起動の記録から出す。
+    このPCですでに設定してある項目は読まない。起動は止めない(結果は呼ぶ側がログへ)。
+    """
+    try:
+        from common import log_distribution, logging_utils
+        result = log_distribution.apply_on_start()
+        if result.applied:
+            logging_utils.apply_settings()          # 読み込んだ出力先へ切り替える
+        return result
+    except Exception as exc:                        # noqa: BLE001 - 起動は止めない
+        # 部品そのものを読めなかったときも同じ形で返す(呼ぶ側は applied・kept・message を見る)
+        return types.SimpleNamespace(ok=False, applied=[], kept=[],
+                                     message=f"配布設定(共通)を読めませんでした: {exc}")
+
+
 def log_environment(mode: str) -> None:
     """起動のたびに残す1枚(基盤仕様書 2.6)。"""
     from common import app_config
 
+    loaded = apply_common_distribution()
     log().info("=" * 60)
     log().info("起動: mode=%s pid=%s", mode, os.getpid())
     log().info("Python: %s (%s)", sys.version.split()[0], sys.executable)
@@ -270,6 +290,11 @@ def log_environment(mode: str) -> None:
     except Exception as exc:                        # noqa: BLE001 - 起動は止めない
         log().warning("版を読めませんでした: %s", exc)
     log().info("ローカル領域: %s", app_config.local_root())
+    if loaded.applied:
+        log().info("配布設定(共通)を読み込みました: %s(すでにあったので読まなかったもの: %s)",
+                   "・".join(loaded.applied), "・".join(loaded.kept) or "なし")
+    if loaded.message:
+        log().warning("配布設定(共通): %s", loaded.message)
     log_module_environment()
     tidy_logs()
 

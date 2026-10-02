@@ -22,6 +22,8 @@ r"""配布用フォルダを作る（``ViVio-Hellon/python-web-tools`` の ``scr
 
 【統合版: 配布設定は3機能ぶんまとめて】
 梱包明細・ペナラベル・資材計算の配布設定を、書き出してあるものは全部入れる。
+共通（ログの出力先・残す日数。上の帯の「ログ」から書き出す ``配布設定\common\``）も
+書き出してあれば入れる（統合 1.0.14）。
 入れないと決めたとき（``with_settings=False``）は**どれも入れない**。
 値は機能ごとに分けたまま（``配布設定\packing_details\`` など。
 ``common/dist_settings.py``）。機能のフォルダの中に古い置き場所の
@@ -180,14 +182,15 @@ def _settings_lines(folder: Path, module=None) -> List[str]:
 
 
 def _settings_sources(src_root: Path, root: Optional[Path]) -> list:
-    """3機能の配布設定のうち、書き出してあるもの: ``[(機能, 呼び名, 置き場所, モジュール)]``。
+    """配布設定のうち、書き出してあるもの: ``[(機能, 呼び名, 置き場所, モジュール)]``。
 
+    3機能と、共通（ログの出力先・残す日数。統合 1.0.14）。
     読むのは **各機能が書き出した場所そのもの**（各機能の ``distribution.DIR``）。
     名前で探すと、置き場所を変えている場合に「書き出したのに入らない」になる。
     ``root`` を渡したとき（試験・写しから作るとき）は、その下の決まった場所。
     """
     found = []
-    for key, label, modname in _dist_settings.MODULES:
+    for key, label, modname in _dist_settings.ALL:
         module = importlib.import_module(modname)
         src = Path(module.DIR) if root is None else src_root / SETTINGS / key
         if src.is_dir() and (src / module.SETTINGS_NAME).is_file():
@@ -247,7 +250,7 @@ def build(out: Optional[Path] = None, *, with_settings: bool = True,
             lines.append("同梱の Python（runtime フォルダ）はありません。"
                          "配った先に Python が要ります。")
 
-        # 配布設定: 入れる/入れないをはっきり決める。**3機能ぶんまとめて**。
+        # 配布設定: 入れる/入れないをはっきり決める。**3機能ぶん（と共通）まとめて**。
         # 配った先では各機能が 配布設定\<機能>\ を読むので、入れる先は決まった名前。
         found = _settings_sources(src_root, root)
         included = False

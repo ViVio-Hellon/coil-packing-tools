@@ -201,11 +201,17 @@ class App:
                         PACKING_DETAILS_KONPO_DB_DIR=str(home / "konpo"),
                         COIL_TOOL_MASTER_DB_DIR=str(home / "master"),
                         COIL_TOOL_LOT_DB_DIR=str(home / "lot"),
+                        COIL_PACKING_TOOLS_DISTRIBUTION_DIR=str(self.dist_common(home)),
                         PPL_PREFER_ACCESS="0")
         for name in ("PYTHONDONTWRITEBYTECODE",):
             self.env.pop(name, None)
         self.proc = None
         self.token = ""
+
+    @staticmethod
+    def dist_common(home: Path) -> Path:
+        """配布設定(共通: ログ)の書き出し先。アプリのフォルダの 配布設定\\common を汚さない。"""
+        return home / "配布設定" / "common"
 
     @property
     def base(self):
@@ -1064,8 +1070,33 @@ def scenario_trail(app: App, ctx, sh: Shell, note: dict) -> None:
     files = list(share.glob("*/coil_packing_tools_*.log"))
     check("後追い: 新しい出力先にログが書かれる", bool(files) and any(
         "ログの出力先" in f.read_text(encoding="utf-8") for f in files), [str(f) for f in files])
-    # 元へ戻す(ほかの段はこのPCの既定の場所を見る)
+    # --- 配布設定(共通)に書き出す → 消す(統合 1.0.14。管理者パスワードは梱包明細と同じ)
     lf.click('.tab[data-tab="settings"]')
+    wait_until(lambda: (lf.locator("#distNow").text_content() or "") != "読み込み中…", 10)
+    def dist_said(word):
+        return wait_until(lambda: word in (lf.locator("#distResult").text_content() or ""), 10)
+    lf.fill("#distPassword", "ちがう")
+    lf.click("#btnDistExport")
+    check("後追い: 配布設定に書き出すには管理者パスワードが要る", dist_said("違います"),
+          lf.locator("#distResult").text_content())
+    admin = os.environ.get("PACKING_DETAILS_ADMIN_PASSWORD", "nisk")
+    lf.fill("#distPassword", admin)
+    lf.click("#btnDistExport")
+    dist_file = App.dist_common(app.home) / "設定.json"
+    ok = dist_said("書き出しました")
+    written = (json.loads(dist_file.read_text(encoding="utf-8")).get("settings", {})
+               if dist_file.exists() else {})
+    check("後追い: ログの出力先を配布設定に書き出す",
+          ok and written.get("log_dir") == str(share), written)
+    check("後追い: 置いてある配布設定が画面に出る",
+          str(share) in (lf.locator("#distNow").text_content() or ""),
+          lf.locator("#distNow").text_content())
+    # 「消します」の確かめは、どのページの窓も「OK」で閉じる決まり(main の ctx.on("page"))
+    lf.fill("#distPassword", admin)
+    lf.click("#btnDistRemove")
+    check("後追い: 配布設定を消す", dist_said("消しました") and not dist_file.exists(),
+          lf.locator("#distResult").text_content())
+    # 元へ戻す(ほかの段はこのPCの既定の場所を見る)
     lf.click("#btnReset")
     ok = wait_until(lambda: "保存しました" in (lf.locator("#result").text_content() or "")
                     and (lf.locator("#nowDir").text_content() or "").startswith(

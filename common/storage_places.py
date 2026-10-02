@@ -100,3 +100,13 @@ def log_place() -> Place:
     return Place("ログ", str(logging_utils.log_dir()),
                  "動いた記録とエラーの記録（3機能共通。なぜなぜ分析に使う）。"
                  "出力先・残す日数は上の帯の「ログ」で変えられます", note)
+
+
+def log_dist_place() -> Place:
+    """配布設定(共通: ログの出力先・残す日数。統合 1.0.14)。どの機能も同じ行を出す。"""
+    from . import log_distribution
+    path = log_distribution.settings_path()
+    return Place("配布設定（共通）", str(path),
+                 "上の帯の「ログ」→「出力先の設定」で書き出した値（"
+                 + "・".join(label for _, label in log_distribution.ITEMS) + "）。3機能共通",
+                 "" if path.is_file() else "まだありません（書き出すと作ります）")

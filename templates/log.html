@@ -8,7 +8,7 @@
 </head>
 <body class="{{ 'embed' if embed else '' }}">
 {#
-  ログとエラーの記録(統合 1.0.12。現場の指摘: エラー等の後追いが現状できない。ログを残し、
+  ログとエラーの記録(統合 1.0.12。1.0.14 で出力先の配布設定を足した。現場の指摘: エラー等の後追いが現状できない。ログを残し、
   なぜなぜで分析できるようにしておいてほしい。ログ出力は設定でパス指定できるようにする)。
   統合画面の上の帯の「ログ」から開く(中に埋め込む)。3機能で1つ。
 #}
@@ -91,7 +91,33 @@
       <p class="result" id="result" role="status" hidden></p>
       <p class="muted">この設定は<b>このPCに保存</b>します
         (<span class="mono">%LOCALAPPDATA%\CoilPackingTools\data\settings.json</span>)。
-        ほかのPCは変わりません。保存するとすぐ切り替わります(再起動は要りません)。</p>
+        ほかのPCは変わりません。保存するとすぐ切り替わります(再起動は要りません)。
+        ほかのPCにも同じ設定を入れたいときは、下の<b>配布設定</b>を使います。</p>
+    </div>
+
+    <div class="card card--dist" id="distCard">
+      <h2>配布設定(ほかのPCへ配る) <span class="where where--dist">アプリのフォルダ</span></h2>
+      <p class="lead">上で保存した<b>ログの出力先と残す日数</b>を、アプリのフォルダの
+        <span class="mono" id="distWhere">配布設定\common</span> に書き出します。
+        アプリのフォルダごと配ると、配った先は<b>起動したときに読み込みます</b>
+        (そのPCですでに出力先を設定してあれば、読み込みません)。
+        ペナラベルの「配布用フォルダを作る」でも一緒に入ります。</p>
+      <dl class="facts">
+        <dt>置いてある配布設定</dt><dd id="distNow">読み込み中…</dd>
+        <dt>このPCのいまの値</dt><dd id="distMine"></dd>
+        <dt>最後に読み込んだ・書き出した</dt><dd class="mono" id="distApplied">―</dd>
+      </dl>
+      <p class="warn" id="distProblem" hidden></p>
+      <label class="field field--short">管理者パスワード(梱包明細と同じ)
+        <input type="password" id="distPassword" autocomplete="off"></label>
+      <div class="bar">
+        <button type="button" class="btn btn--primary" id="btnDistExport">配布設定に書き出す</button>
+        <button type="button" class="btn" id="btnDistReapply">配布設定を読み込み直す</button>
+        <button type="button" class="btn" id="btnDistRemove">配布設定を消す</button>
+      </div>
+      <p class="result" id="distResult" role="status" hidden></p>
+      <p class="muted">「読み込み直す」は、このPCですでに設定してある値も<b>上書き</b>して揃えます。
+        書き出すのは、このPCで変えた項目だけです(既定のままの項目は入れません ── 配った先も既定で動きます)。</p>
     </div>
   </section>
 </main>

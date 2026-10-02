@@ -43,12 +43,14 @@ code{ font-family:var(--mono); background:var(--sunken); padding:0 4px; border-r
 
 .bar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0; }
 .bar input[type=search]{ flex:1 1 320px; min-width:200px; }
-input[type=search], input[type=text], input[type=number]{
+input[type=search], input[type=text], input[type=number], input[type=password]{
   font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px;
   background:var(--paper); color:var(--ink); }
 .btn{ font:inherit; padding:5px 14px; border:1px solid var(--line); border-radius:6px; cursor:pointer;
   background:var(--paper); color:var(--ink); }
 .btn:hover{ border-color:var(--accent); }
+.btn:disabled{ opacity:.45; cursor:not-allowed; }
+.btn:disabled:hover{ border-color:var(--line); }
 .btn--primary{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }
 
 .cols{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.25fr); gap:12px; }
@@ -85,3 +87,9 @@ table.grid tbody tr.on{ background:var(--accent-soft); box-shadow:inset 3px 0 0 
 .result{ margin:6px 0; padding:6px 10px; border-radius:4px; }
 .result--ok{ background:var(--ok-soft); color:var(--ok); }
 .result--ng{ background:#fbe0df; color:#7a1f1b; }
+
+/* 配布設定(統合 1.0.14) */
+.card--dist{ margin-top:12px; border-left-color:var(--ink-3); }
+.where--dist{ color:var(--ink-2); }
+.facts dd ul{ margin:0; padding-left:1.2em; }
+.card--dist .field--short input{ width:16em; }

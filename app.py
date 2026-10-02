@@ -47,7 +47,7 @@ from markupsafe import escape
 from werkzeug.exceptions import HTTPException
 
 from common import (app_config, boot_screen, idle_exit, incidents, local_settings,
-                    logging_utils, modes, security, versions)
+                    log_distribution, logging_utils, modes, security, versions)
 from common.logging_utils import get_logger
 
 log = get_logger("coil_packing_tools", "app")
@@ -652,6 +652,56 @@ def _log_routes(bp: Blueprint) -> None:
         return jsonify({"ok": True, "message": f"保存しました。ここへ出します: {state['dir']}",
                         **state})
 
+    @bp.get("/api/log/distribution")
+    def log_distribution_state():
+        """配布設定(共通: ログの出力先・残す日数)のいま。"""
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        return jsonify({"ok": True, **log_distribution.summary()})
+
+    @bp.post("/api/log/distribution")
+    def log_distribution_action():
+        """配布設定(共通)を `action` = export(書き出す)/ reapply(読み込み直す)/ remove(消す)。
+
+        **梱包明細の管理者パスワード**(全ラインで共有)が要る。3機能の配布設定と同じく、
+        書き出す・消す・読み込み直すは管理者の操作(統合 1.0.14)。
+        """
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        body = request.get_json(silent=True) or {}
+        action = str(body.get("action", ""))
+        if action not in ("export", "reapply", "remove"):
+            return security.error_json("bad_input", "知らない操作です", 400)
+        if not _admin_password_ok(str(body.get("password", "") or "")):
+            response = jsonify({"ok": False, "field": "password",
+                                "message": "管理者パスワード（梱包明細と同じ）が違います。"})
+            response.status_code = 403
+            return response
+        if action == "export":
+            result = log_distribution.export()
+        elif action == "remove":
+            result = log_distribution.remove()
+        else:
+            result = log_distribution.reapply()
+            if result.ok:
+                logging_utils.apply_settings()        # 読み込んだ出力先へすぐ切り替える
+        if result.ok:
+            log.info("配布設定(共通)を%s: %s",
+                     {"export": "書き出しました", "remove": "消しました",
+                      "reapply": "読み込み直しました"}[action],
+                     "・".join(result.applied) or "-")
+        else:
+            log.warning("配布設定(共通)の%s: %s", action, result.message)
+        status = 200 if result.ok else (400 if result.reason == log_distribution.REFUSE_BAD_INPUT
+                                        else 500)
+        response = jsonify({"ok": result.ok, "message": result.message,
+                            "distribution": log_distribution.summary(),
+                            "log": logging_utils.status()})
+        response.status_code = status
+        return response
+
     @bp.get("/api/log/incidents")
     def log_incidents():
         deny = _need_token()
@@ -689,6 +739,16 @@ def _log_routes(bp: Blueprint) -> None:
                      or " | CRITICAL | " in l]
         return jsonify({"ok": True, "path": str(path),
                         "lines": [incidents.mask_url(l) for l in lines[-limit:]]})
+
+
+def _admin_password_ok(password: str) -> bool:
+    """梱包明細の管理者パスワード(全ラインで共有)と合っているか。照合は梱包明細に任せる。"""
+    try:
+        from modules.packing_details.meisai import admin_password
+        return admin_password.verify(password)
+    except Exception:                         # noqa: BLE001 - 照合できなければ通さない
+        log.exception("管理者パスワードを照合できませんでした")
+        return False
 
 
 def _tail(path: Path, max_bytes: int) -> list:

@@ -77,9 +77,12 @@ class DetailsStorageTest(unittest.TestCase):
         self.assertIn("ほかのPCは変わりません", shared["note"])
 
     def test_distribution_file(self):
+        """梱包明細の配布設定と、共通(ログの出力先。統合 1.0.14)の配布設定。"""
+        from common import log_distribution
         from modules.packing_details.meisai import distribution
         self.assertEqual(_paths(_group(self.body["storage"], "dist")),
-                         [str(distribution.settings_path())])
+                         [str(distribution.settings_path()),
+                          str(log_distribution.settings_path())])
 
     def test_dialog_has_the_tab_and_the_badges(self):
         html = self.client.get(f"/details/meisai?t={TOKEN}").get_data(as_text=True)

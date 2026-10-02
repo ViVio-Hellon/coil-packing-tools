@@ -18,6 +18,8 @@ ROOT = Path(_DIR.name)
 
 os.environ.setdefault("COIL_PACKING_TOOLS_LOCAL_DIR", str(ROOT / "CoilPackingTools"))
 os.environ.setdefault("COIL_PACKING_TOOLS_LOG_DIR", str(ROOT / "CoilPackingTools" / "logs"))
+# 配布設定(共通: ログの出力先)。アプリのフォルダの 配布設定\common を汚さない
+os.environ.setdefault("COIL_PACKING_TOOLS_DISTRIBUTION_DIR", str(ROOT / "common" / "配布設定"))
 # 梱包明細・資材計算: `XDG_DATA_HOME`(非Windows のローカル領域)と個別の置き場所
 os.environ.setdefault("XDG_DATA_HOME", str(ROOT / "xdg-data"))
 os.environ.setdefault("PACKING_DETAILS_DB_PATH", str(ROOT / "details" / "packing_details.db"))

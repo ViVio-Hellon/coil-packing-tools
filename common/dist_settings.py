@@ -14,9 +14,13 @@ r"""配布設定の置き場所(統合版で1つにした決まり)
       packing_details\               梱包明細
       packing_pena_label\            ペナラベル
       packing_material_calculation\  資材計算
+      common\                        共通(ログの出力先・残す日数。統合 1.0.14)
 
-配布用フォルダを作る処理(``scripts/make_dist.py``)は、ここに並べた3機能の
-配布設定をまとめて入れる(入れないと決めたら、どれも入れない)。
+``common`` は3機能で1つしかない設定(``common/local_settings.py``)の配布設定。
+上の帯の「ログ」から書き出す(``common/log_distribution.py``)。
+
+配布用フォルダを作る処理(``scripts/make_dist.py``)は、ここに並べた配布設定を
+まとめて入れる(入れないと決めたら、どれも入れない)。
 """
 from __future__ import annotations
 
@@ -40,9 +44,17 @@ MODULES: Tuple[Tuple[str, str, str], ...] = (
 )
 
 
+#: 3機能に共通の配布設定(ログ)。**3機能の一覧(`MODULES`)には入れない** ──
+#: 「書き出していない機能」の知らせは3機能だけを数える(共通は既定のままが普通)
+COMMON: Tuple[str, str, str] = ("common", "共通（ログ）", "common.log_distribution")
+
+#: 配布用フォルダに入れるもの全部(3機能 + 共通)
+ALL: Tuple[Tuple[str, str, str], ...] = MODULES + (COMMON,)
+
+
 def default_dir(module: str) -> Path:
     """その機能の配布設定の既定の置き場所(``<統合アプリ>\\配布設定\\<機能>``)。"""
-    if module not in {key for key, _, _ in MODULES}:
+    if module not in {key for key, _, _ in ALL}:
         raise ValueError(f"配布設定を持たない機能です: {module}")
     return APP_ROOT / ROOT_NAME / module
 

@@ -4,6 +4,7 @@
   エラーの記録   一覧 → 押すと中身(なぜなぜ分析の記入欄つき)。番号・言葉で絞る
   今日のログ     終わりのほう(警告とエラーだけ / すべて)
   出力先の設定   出力先・残す日数。確かめる → 保存(すぐ切り替わる)
+                 配布設定(共通): 書き出す・読み込み直す・消す(管理者パスワード。統合 1.0.14)
 */
 (function () {
   "use strict";
@@ -36,7 +37,7 @@
       $("panel-" + t.dataset.tab).hidden = !on;
     });
     if (name === "today") loadToday();
-    if (name === "settings") loadStatus();
+    if (name === "settings") { loadStatus(); loadDist(); }
     if (name === "incidents") loadIncidents();
   }
   tabs.forEach(function (t) { t.addEventListener("click", function () { show(t.dataset.tab); }); });
@@ -162,6 +163,83 @@
     $("dirInput").value = "";
     send("reset");
   });
+
+  // ---------------------------------------------------------- 配布設定(共通)
+  function distResult(text, ok) {
+    var el = $("distResult");
+    el.hidden = !text;
+    el.textContent = text || "";
+    el.className = "result " + (ok ? "result--ok" : "result--ng");
+  }
+  function list(rows, empty) {
+    var dd = document.createElement("span");
+    if (!rows.length) { dd.textContent = empty; return dd; }
+    var ul = document.createElement("ul");
+    rows.forEach(function (r) {
+      var li = document.createElement("li");
+      li.textContent = r;
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+  function fillDist(d) {
+    $("distWhere").textContent = d.where || d.path || "";
+    var now = $("distNow");
+    now.textContent = "";
+    if (d.exists) {
+      now.appendChild(list(d.contents.map(function (c) { return c.label + ": " + c.value; }), ""));
+      var made = document.createElement("span");
+      made.className = "muted";
+      made.textContent = "作成 " + (d.created_at || "?") + "(" + (d.created_on || "?") + ")";
+      now.appendChild(made);
+    } else {
+      now.textContent = d.problem ? "読めません" : "まだありません";
+    }
+    $("distMine").textContent = "";
+    $("distMine").appendChild(list(d.items.map(function (i) { return i.label + ": " + i.value; }), ""));
+    $("distApplied").textContent = d.applied_at || "―";
+    var bad = [d.problem].concat((d.skipped || []).map(function (s) {
+      return "形が違うので読まないもの: " + s;
+    })).filter(Boolean);
+    $("distProblem").hidden = !bad.length;
+    $("distProblem").textContent = bad.join(" / ");
+    $("btnDistReapply").disabled = !d.exists;
+    $("btnDistRemove").disabled = !d.exists && !d.problem;
+  }
+  function loadDist() {
+    return api("/api/log/distribution").then(function (d) {
+      if (d.ok) fillDist(d);
+      else distResult(d.message || (d.error && d.error.message) || "読めませんでした", false);
+    });
+  }
+  function distSend(action) {
+    var pw = $("distPassword").value;
+    if (!pw) {
+      distResult("管理者パスワード(梱包明細と同じ)を入れてください", false);
+      $("distPassword").focus();
+      return Promise.resolve();
+    }
+    if (action === "remove" && !window.confirm("配布設定(共通)を消します。このPCの設定はそのままです。"))
+      return Promise.resolve();
+    if (action === "reapply" &&
+        !window.confirm("配布設定の値で、このPCのログの出力先・残す日数を上書きします。"))
+      return Promise.resolve();
+    distResult("処理しています…", true);
+    return api("/api/log/distribution", { action: action, password: pw }).then(function (j) {
+      distResult(j.message || (j.error && j.error.message) || "", !!j.ok);
+      if (j.field === "password") { $("distPassword").select(); return; }
+      $("distPassword").value = "";
+      if (j.distribution) fillDist(j.distribution);
+      if (j.ok && action === "reapply" && j.log) {
+        fill(j.log);
+        $("dirInput").value = j.log.configured || "";
+        $("keepInput").value = j.log.keep_days;
+      }
+    });
+  }
+  $("btnDistExport").addEventListener("click", function () { distSend("export"); });
+  $("btnDistReapply").addEventListener("click", function () { distSend("reapply"); });
+  $("btnDistRemove").addEventListener("click", function () { distSend("remove"); });
 
   // ---------------------------------------------------------- 最初
   var wanted = new URLSearchParams(location.search).get("id");
