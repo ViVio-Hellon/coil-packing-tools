@@ -4,7 +4,7 @@
 
     python tools/e2e_scenarios.py                 # 一連の流れ → 交互に使う → 放置する
     python tools/e2e_scenarios.py --quick         # 放置を短くする(動きの確認用)
-    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / storage / master / trail / theme / idle のどれかだけ
+    python tools/e2e_scenarios.py --only flow     # flow / print / alternate / multitab / storage / master / trail / theme / idle のどれかだけ
 
 【何をするか】
 本物の起動(`start_app.py`)で統合アプリを立て、実ブラウザ(Chromium)で統合画面を開き、
@@ -38,9 +38,13 @@
    3機能のマスタ管理で、見出し(列名)を押すと昇順 → もう一度押すと降順に並ぶこと
 6. エラーの後追い(`--only trail`)
    画面でわざとエラーを起こし、番号が出る → 「中身を見る」で記録(なぜなぜの欄つき)が開く。
-   上の帯の「ログ」で出力先を変えると、すぐ PC の名前のフォルダに書かれる → 既定に戻す
+   上の帯の「ログ」で出力先を変えると、すぐ PC の名前のフォルダに書かれる → 配布設定に
+   書き出す・消す → 既定に戻す
 7. 配色(`--only theme`)
    ブラウザの外観がダークのとき、3機能の背景が暗くそろう。印刷用のタブとバーコードは白地のまま
+8. 印刷する(`--only print`。一連の流れのあと)
+   3機能の印刷プレビュー11画面すべてで「印刷する」が1つあり、押すと印刷のダイアログが開き
+   (window.print が呼ばれた回数を数える)、印刷のときには隠れる(紙に出ない)
 
 【要るもの】Playwright と Chromium(`tools/smoke_shell.py` と同じ)。現場の PC には要らない。
 """
@@ -57,6 +61,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -499,6 +504,7 @@ def scenario_flow(app: App, ctx, sh: Shell, note: dict) -> None:
     fr.wait_for_load_state()
     combos = fr.evaluate("[...document.querySelectorAll('#asCombo option')].map(o => o.value).filter(Boolean)")
     if combos:
+        note["combo"] = combos[0]
         fr.select_option("#asCombo", combos[0])
         fr.wait_for_load_state()
         wait_until(lambda: sh.frame("pena").evaluate("document.readyState") == "complete" and
@@ -727,6 +733,90 @@ def _print_tab_state(pg) -> dict:
       const shown = s => { const e = document.querySelector(s); return !!e && !e.hidden &&
         getComputedStyle(e).display !== 'none'; };
       return {menu: shown('.appbar-nav'), guard: shown('#screenguard'), bar: shown('.printbar')}; }""")
+
+
+# ======================================================================
+# 印刷する: すべての印刷プレビューに「印刷する」があり、押すと印刷が開く(統合 1.0.15)
+# ======================================================================
+_PRINT_STUB = "() => { window.__printed = 0; window.print = () => { window.__printed++; }; }"
+
+
+def _print_preview(pg, label: str, sel: str, shots: str = "") -> None:
+    """その画面に「印刷する」が1つあり、押すと印刷のダイアログ(window.print)が開き、
+    紙(印刷のとき)には出ない。ダイアログの代わりに呼ばれた回数を数える。"""
+    pg.wait_for_load_state()
+    pg.wait_for_timeout(300)
+    # 開いたとき自分で印刷を出す画面(ペナラベルの印刷ビュー)もある。それは数えない
+    pg.evaluate(_PRINT_STUB)
+    btn = pg.locator(sel)
+    found = btn.count()
+    name = (btn.first.text_content() or "").strip() if found else ""
+    shown = found == 1 and btn.is_visible()
+    called = 0
+    if shown:
+        btn.click()
+        called = pg.evaluate("window.__printed")
+    if shots:
+        Path(shots).mkdir(parents=True, exist_ok=True)
+        pg.screenshot(path=str(Path(shots) / f"print_{len(list(Path(shots).glob('print_*')))+1:02d}.png"))
+    pg.emulate_media(media="print")
+    on_paper = found == 1 and btn.is_visible()
+    pg.emulate_media(media="screen")
+    check(f"印刷する: {label}", shown and name == "印刷する" and called == 1 and not on_paper,
+          {"数": found, "名前": name, "印刷が開いた回数": called, "紙に出る": on_paper,
+           "画面": urllib.parse.urlparse(pg.url).path})
+
+
+def _details_history_id(app: "App") -> str:
+    """出力した明細の履歴の番号(梱包明細の手元のDBから)。"""
+    for db in app.home.rglob("packing_details.db"):
+        with sqlite3.connect(str(db)) as conn:
+            row = conn.execute("SELECT 履歴ID FROM 明細出力 WHERE 履歴ID != '' "
+                               "ORDER BY 出力日時 LIMIT 1").fetchone()
+        if row:
+            return row[0]
+    return ""
+
+
+def scenario_print(app: App, ctx, sh: Shell, note: dict, shots: str = "") -> None:
+    """3機能のすべての印刷プレビュー(印刷用のタブ)を開いて「印刷する」を押す。
+    一連の流れのあと(明細・ラベル・風袋・全サイズ・チェックリスト・発注票ができている)。"""
+    print("■ 印刷する(すべての印刷プレビュー)")
+    t = "t=" + app.token
+    hid = _details_history_id(app)
+    pages = [
+        ("梱包明細 明細表(1枚)", f"/details/report/L5160Z0/1?{t}", "p.editbar button.print"),
+        ("梱包明細 明細表(まとめて)", f"/details/report/L5160Z0?nos=1&{t}", "p.editbar button.print"),
+        ("梱包明細 履歴から作り直した紙面", f"/details/report/history?ids={hid}&{t}",
+         "p.editbar button.print"),
+        ("ペナラベル 風袋計算の印刷ビュー", "/pena/tare/print", ".printbar [data-print-now]"),
+        ("ペナラベル 羅列計算の印刷ビュー", "/pena/list/print", ".printbar [data-print-now]"),
+        ("ペナラベル 小ラベルの印刷(実寸)", "/pena/labels/print?ob=5", ".printbar [data-print-now]"),
+        ("ペナラベル ラベル台紙の印刷ビュー", "/pena/labels/sheet?ob=5", ".printbar [data-print-now]"),
+        ("ペナラベル 位置合わせ(試し刷り)", "/pena/labels/calibration", ".printbar [data-print-now]"),
+        ("ペナラベル 全サイズの印刷ビュー",
+         "/pena/all-size/print?combo=" + urllib.parse.quote(note.get("combo", "")),
+         ".printbar [data-print-now]"),
+        ("資材計算 チェックリスト", f"/material/report/checklist?{t}", "#printNow"),
+        ("資材計算 発注票", f"/material/report/order?{t}", "#printNow"),
+    ]
+    check("印刷する: 梱包明細の履歴の番号が取れる", bool(hid), hid)
+    for label, path, sel in pages:
+        pg = ctx.new_page()
+        try:
+            pg.goto(app.base + path)
+            _print_preview(pg, label, sel, shots)
+        finally:
+            pg.close()
+    # ペナラベルの小ラベルの印刷には、帯とは別に案内の中にも「印刷する」がある
+    pg = ctx.new_page()
+    try:
+        pg.goto(app.base + "/pena/labels/print?ob=5")
+        _print_preview(pg, "ペナラベル 小ラベルの印刷(案内の中のボタン)",
+                       '.preview-note button[onclick="window.print()"]')
+    finally:
+        pg.close()
+    check("印刷する: 見たあとも3機能とも使える", sh.ready(10), sh.trouble())
 
 
 def scenario_multitab(app: App, ctx, sh: Shell, note: dict) -> None:
@@ -1361,8 +1451,8 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--only", choices=("flow", "alternate", "multitab", "storage", "master", "trail",
-                                       "theme", "idle"))
+    ap.add_argument("--only", choices=("flow", "print", "alternate", "multitab", "storage", "master",
+                                       "trail", "theme", "idle"))
     ap.add_argument("--shots", default="", help="保存先の画面の写しを置くフォルダ")
     ap.add_argument("--quick", action="store_true", help="放置を短くする")
     ap.add_argument("--keep", action="store_true", help="試験用の置き場所を残す")
@@ -1391,8 +1481,10 @@ def main(argv=None) -> int:
         ctx.on("page", lambda p: p.on("pageerror", lambda e: errors.append(f"{p.url.split('?')[0]}: {e}")))
         ctx.on("page", lambda p: p.on("dialog", lambda d: d.accept()))
         sh = Shell(ctx, app)
-        if args.only in (None, "flow", "alternate", "multitab", "idle"):
+        if args.only in (None, "flow", "print", "alternate", "multitab", "idle"):
             scenario_flow(app, ctx, sh, note)
+        if args.only in (None, "print"):
+            scenario_print(app, ctx, sh, note, args.shots)
         if args.only in (None, "alternate", "multitab", "idle"):
             scenario_alternate(app, ctx, sh, note)
         if args.only in (None, "multitab"):

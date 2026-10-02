@@ -163,6 +163,10 @@ def test_checklist_add_and_print(ready):
     assert rep.status_code == 200
     assert "LS4資材発注管理チェックリスト".encode() in rep.data
     assert "A123456".encode() in rep.data
+    # プレビューの上に「印刷する」(0.2.11。発注票と同じ。紙には出ない)
+    html = rep.data.decode()
+    assert 'id="printNow" onclick="window.print()">印刷する</button>' in html
+    assert '<div class="screen-only printbar">' in html
 
 
 def test_checklist_needs_worker(client, sandbox):

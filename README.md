@@ -43,7 +43,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.0.14 [梱包明細] [ペナラベル] [資材計算]   接続OK [終了]
+上の帯   コイル梱包ツール VER1.0.15 [梱包明細] [ペナラベル] [資材計算]   接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
@@ -139,10 +139,10 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.0.14 | `config/app.json` |
+| コイル梱包ツール(統合ツール) | 1.0.15 | `config/app.json` |
 | 梱包明細 | 0.13.11 | `modules/packing_details/config/app.json` |
-| ペナラベル | 1.5.10 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
-| 資材計算 | 0.2.10 | `modules/packing_material_calculation/config/app.json` |
+| ペナラベル | 1.5.11 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| 資材計算 | 0.2.11 | `modules/packing_material_calculation/config/app.json` |
 
 機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
 だけを変えたら、統合ツールの版だけを上げます。決まりの全体は `docs/変更履歴.md`。
@@ -186,7 +186,7 @@ python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペ�
 python -m pytest modules/packing_material_calculation/tests              # 資材計算   432
 python -m pytest tests                                                   # 統合       174
 python tools/smoke_shell.py                                              # 通し(配布前に一度)
-python tools/e2e_scenarios.py                                           # 3機能の一連の流れ・交互・保存先・マスタ管理・後追い・配色・放置(約20分。--quick で約9分)
+python tools/e2e_scenarios.py                                           # 3機能の一連の流れ・印刷する・交互・保存先・マスタ管理・後追い・配色・放置(約20分。--quick で約9分)
 python tools/print_edge_check.py                                         # 印刷の端 5mm(紙面を直したら)
 ```
 

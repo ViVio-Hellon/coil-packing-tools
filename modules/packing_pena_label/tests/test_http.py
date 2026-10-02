@@ -334,14 +334,14 @@ class TestPrintBlockedWhenStale(HttpTestCase):
         self._apply(self._cur())
         _, html = self.get("/labels/print?ob=14")
         self.assertIn('onclick="window.print()"', html, "印刷ボタンが無い")
-        self.assertNotIn("印刷（停止中）", html)
+        self.assertNotIn("印刷する（停止中）", html)
         self.assertNotIn("stopprint", html)
 
     def test_print_button_is_disabled_when_stale(self):
         self._apply(self._cur())
         self._apply(self._cur("Z111111", "33.0", "20"), calc=False)
         _, html = self.get("/labels/print?ob=14")
-        self.assertIn("印刷（停止中）", html)
+        self.assertIn("印刷する（停止中）", html)
         self.assertIn("<button class=\"btn\" disabled", html)
         self.assertNotIn('onclick="window.print()"', html,
                          "押せる印刷ボタンが残っている")
@@ -359,7 +359,7 @@ class TestPrintBlockedWhenStale(HttpTestCase):
         self._apply(self._cur())
         self._apply(self._cur("Z111111", "33.0", "20"), calc=False)
         _, html = self.get("/labels/print?ob=14")
-        self.assertIn("印刷（停止中）", html)
+        self.assertIn("印刷する（停止中）", html)
 
         self._apply(self._cur("Z111111", "33.0", "20"))
         _, html = self.get("/labels/print?ob=14")
@@ -391,7 +391,48 @@ class TestPrintBlockedWhenStale(HttpTestCase):
         self.post("/api/clear", {"current": self._cur()})
         self._apply(self._cur("Z111111", "33.0", "20"), calc=False)
         _, html = self.get("/labels/print?ob=14")
-        self.assertNotIn("印刷（停止中）", html)
+        self.assertNotIn("印刷する（停止中）", html)
+
+
+class TestEveryPrintTabHasThePrintButton(HttpTestCase):
+    """印刷用のタブには、どれも上の帯に「印刷する」(1.5.11。現場の指摘:
+    すべての印刷プレビュー画面に「印刷する」があるか)。帯は紙に出ない(.appbar)。"""
+
+    BUTTON = '<button type="button" class="btn btn-primary" data-print-now>印刷する</button>'
+
+    def setUp(self):
+        cur = {"selectedCb": 5, "tip": "TIP1000", "kensaNo": "w111111",
+               "weight1": "10", "weight2": "12", "coilH": {}}
+        self.post("/api/clear", {"current": cur})
+        self.post("/api/select-checkbox", {"cbIdx": 5, "current": cur})
+        self.post("/api/apply-weight", {"current": cur})
+        cur["coilH"] = {"1": "11", "2": "11", "3": "10", "4": "10"}
+        self.post("/api/calc-tare", {"current": cur})
+        self.post("/api/calc-list", {"current": cur})
+        self.cur = cur
+
+    def test_every_print_tab(self):
+        for path in ("/tare/print", "/list/print", "/labels/print?ob=5,6",
+                     "/labels/sheet?ob=5,6", "/labels/calibration",
+                     "/all-size/print?combo=x"):
+            with self.subTest(path=path):
+                status, html = self.get(path)
+                self.assertEqual(status, 200)
+                self.assertEqual(html.count(self.BUTTON), 1, "帯の「印刷する」")
+                self.assertIn('<body class="print-only"', html)
+                self.assertNotIn(">印刷</button>", html, "名前は「印刷する」にそろえる")
+
+    def test_the_bar_cannot_print_stale_labels(self):
+        """入力が変わったまま(計算していない)のラベルは、帯からも刷れない。"""
+        changed = dict(self.cur, kensaNo="w222222", weight1="20", weight2="22")
+        self.post("/api/apply-weight", {"current": changed})
+        _, html = self.get("/labels/print?ob=5,6")
+        self.assertNotIn("data-print-now", html)
+        self.assertEqual(html.count("印刷する（停止中）"), 2, "帯と案内の2つとも止める")
+        # 計算し直せば戻る
+        self.post("/api/calc-tare", {"current": dict(changed, coilH=self.cur["coilH"])})
+        _, html = self.get("/labels/print?ob=5,6")
+        self.assertEqual(html.count(self.BUTTON), 1)
 
 
 class TestStaleMasterIsVisible(HttpTestCase):

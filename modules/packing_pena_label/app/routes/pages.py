@@ -102,7 +102,8 @@ class PageRoutes:
         cls._pane_flag.on = bool(on)
 
     def _shell(self, title: str, content: str, nav: str = "",
-               page_script: str = "", print_only: bool = False) -> str:
+               page_script: str = "", print_only: bool = False,
+               print_blocked: str = "") -> str:
         """画面の外枠。
 
         `print_only` は**印刷用の別タブ**(ラベル印刷・印刷ビュー・全サイズ印刷・
@@ -110,6 +111,9 @@ class PageRoutes:
         「このタブを閉じる」だけを出す。メニューを出すと、印刷のタブから業務の画面へ
         進めてしまい、ツールが2つ開いたのと同じになってタブが増える一方だった
         (現場の指摘)。印刷用のタブは受付(この画面で使う)もしない。
+
+        `print_blocked` は刷らせないときの理由(ラベルの入力が変わったまま等)。
+        帯の「印刷する」を押せなくし、理由を添える。
         """
         if getattr(self._pane_flag, "on", False):
             # 起動ページのタブとして差し込むので、外枠は付けない
@@ -144,7 +148,7 @@ class PageRoutes:
             "screenGuardHidden": "" if nav in self._INPUT_NAVS and not print_only else "hidden",
             "screenTitle": title,
             "bodyClass": "print-only" if print_only else "",
-            "printbar": self._printbar(title) if print_only else "",
+            "printbar": self._printbar(title, print_blocked) if print_only else "",
         }
         for key, name in (("navHome", "home"), ("navAll", "all"),
                           ("navTare", "tare"), ("navList", "list"),
@@ -154,11 +158,18 @@ class PageRoutes:
         return self.r.render("_layout.html", ctx)
 
     @staticmethod
-    def _printbar(title: str) -> str:
-        """印刷用のタブの帯(メニューの代わり)。「印刷」と「このタブを閉じる」だけ。"""
+    def _printbar(title: str, blocked: str = "") -> str:
+        """印刷用のタブの帯(メニューの代わり)。「印刷する」と「このタブを閉じる」だけ。
+
+        ボタンの名前は3機能でそろえる(梱包明細・資材計算のプレビューも「印刷する」。1.5.11)。
+        `blocked` なら押せない(理由をボタンの説明に)。
+        """
+        button = ('<button type="button" class="btn btn-primary" disabled '
+                  f'title="{esc(blocked)}">印刷する（停止中）</button>' if blocked else
+                  '<button type="button" class="btn btn-primary" data-print-now>印刷する</button>')
         return ('<div class="printbar">'
                 f'<span class="printbar-title">印刷用のタブ: {esc(title)}</span>'
-                '<button type="button" class="btn btn-primary" data-print-now>印刷</button>'
+                + button +
                 '<button type="button" class="btn" data-close-tab>このタブを閉じる</button>'
                 '</div>')
 
@@ -702,15 +713,17 @@ class PageRoutes:
                 '（「左へ 2.5mm ずれている」のように入れるだけ。以後ずっと効きます）。</p>'
                 '<div class="btn-row">'
                 + ('<button class="btn" disabled title="入力が変わっています。'
-                   'メイン画面で「計算」を実行してください">印刷（停止中）</button>'
+                   'メイン画面で「計算」を実行してください">印刷する（停止中）</button>'
                    if stale else
-                   '<button class="btn" onclick="window.print()">印刷</button>')
+                   '<button class="btn" onclick="window.print()">印刷する</button>')
                 + f'<a class="btn" href="{self.base}/labels/print?ob={",".join(map(str, ob_list))}'
                 f'&guides=1">枠線を表示して確認</a>'
                 f'<a class="btn" href="{self.base}/labels/calibration">位置合わせ（試し刷り）</a>'
                 '</div></div>')
         return self._shell("ラベル印刷",
-                           stale_note + note + font_css + pages, "labels", print_only=True)
+                           stale_note + note + font_css + pages, "labels", print_only=True,
+                           print_blocked=("入力が変わっています。メイン画面で「計算」を"
+                                          "実行してください" if stale else ""))
 
     def label_calibration(self) -> str:
         """試し刷りで位置を合わせる画面。

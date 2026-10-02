@@ -518,3 +518,10 @@ def test_印刷するボタンは紙に出さない():
     assert "@media print { .screen-only { display: none; } }" in with_button
     assert with_button.count("印刷する</button>") == 1
     assert "印刷する</button>" not in printing.render_html(rep)
+    # 帯を並べる指定(display: flex)が印刷のときに効くと、`.screen-only` の非表示に勝って
+    # 紙にボタンが刷られる(0.2.10 まで)。並べ方は画面のときだけ・印刷では必ず隠す
+    import re
+    css = with_button.split("<style>")[1].split("</style>")[0]
+    outside = re.sub(r"@media screen \{[^{}]*(\{[^{}]*\}[^{}]*)*\}", "", css)
+    assert not re.search(r"\.printbar\s*\{[^}]*display:\s*flex", outside)
+    assert "@media print { .printbar { display: none !important; } }" in css

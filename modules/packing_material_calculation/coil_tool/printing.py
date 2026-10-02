@@ -176,8 +176,11 @@ table.form th { background: #f0f0f0; font-weight: bold; }
 }
 @media print { .screen-only { display: none; } }
 /* 画面の上の「印刷する」(0.2.9。現場の指摘: 発注票のプレビューに印刷するボタンを)。
-   紙には出さない(.screen-only) */
-.printbar { display: flex; align-items: center; gap: 12px; }
+   紙には出さない。**並べ方(display: flex)は画面のときだけ** ── 外に書くと、後ろにある
+   ぶん上の `.screen-only { display: none }` に勝ち、紙にボタンが刷られていた(0.2.11 で直した。
+   実ブラウザで印刷のときの見え方を確かめて分かった) */
+@media screen { .printbar { display: flex; align-items: center; gap: 12px; } }
+@media print { .printbar { display: none !important; } }
 .printbar button { font: inherit; font-size: 14px; font-weight: bold; padding: 6px 22px;
   border: 1px solid #1e5aa8; border-radius: 6px; background: #1f63b8; color: #fff;
   cursor: pointer; }

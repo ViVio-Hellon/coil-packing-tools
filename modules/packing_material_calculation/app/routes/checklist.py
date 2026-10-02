@@ -115,4 +115,5 @@ def report():
     conn = get_db()
     rows = checklist_service.load_all(conn)
     rep = reports.build_checklist_report(rows, line=user_settings.get_line())
-    return printing.render_html(rep)
+    # プレビューの上に「印刷する」(0.2.11。発注票と同じ。紙には出ない)
+    return printing.render_html(rep, print_button=True)

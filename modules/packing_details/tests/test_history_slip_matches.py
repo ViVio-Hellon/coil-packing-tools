@@ -117,5 +117,34 @@ class HistorySlipMatchesTest(unittest.TestCase):
         self.assertIn("NLM.NAGOYA.QA", after[0])
 
 
+class PrintButtonTest(HistorySlipMatchesTest):
+    """紙面(印刷用のタブ)には、どれも上に「印刷する」(統合 1.0.15。現場の指摘:
+    すべての印刷プレビュー画面に「印刷する」があるか)。帯は紙に出ない(`.editbar`)。"""
+
+    BUTTON = '<button type="button" class="print" onclick="window.print()">印刷する</button>'
+
+    def test_every_slip_page_has_it(self):
+        self.output(["1-10", "2-8"])
+        self.output(["1-4", "2-2"])
+        pages = {
+            "1枚": self.original(1),
+            "まとめて": self.client.get(f"/report/L5160Z0?nos=1,2&t={TOKEN}").get_data(as_text=True),
+            "履歴から": self.from_history(1, 2),
+        }
+        for name, html in pages.items():
+            with self.subTest(name):
+                self.assertEqual(html.count(self.BUTTON), 1)
+                bar = re.search(r'<p class="editbar">.*?</p>', html, flags=re.S)
+                self.assertIsNotNone(bar)
+                self.assertIn(self.BUTTON, bar.group(0), "紙に出ない帯の中")
+                self.assertIn(".editbar { display: none; }", html)
+
+    # 親の試験は2度流さない
+    test_one_slip_with_hand_entries_is_the_same = None
+    test_several_slips_keep_their_own_contents = None
+    test_hand_entries_after_sending_reach_the_shared_history = None
+    test_the_top_right_text_is_the_one_printed_then = None
+
+
 if __name__ == "__main__":
     unittest.main()
