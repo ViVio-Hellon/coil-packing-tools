@@ -159,8 +159,8 @@ def cutoff(today: Optional[date] = None) -> str:
 
 
 def history_path() -> Path:
-    """共有の履歴ファイル。梱包資材マスタと同じフォルダ。"""
-    return shared_settings.shared_dir() / config.HISTORY_DB_NAME
+    """共有の履歴ファイル。既定は梱包資材マスタと同じフォルダ(設定で変えられる)。"""
+    return shared_settings.history_dir() / config.HISTORY_DB_NAME
 
 
 # ==================================================================
@@ -431,7 +431,7 @@ def ensure_shared() -> bool:
     取って**1台ずつ**作る。探す・書き出す・マスタ管理で見る前に呼ぶ ──
     「まだ無い」で止めずに、その場で作る(現場の指定)。
     """
-    folder = shared_settings.shared_dir()
+    folder = shared_settings.history_dir()
     path = folder / config.HISTORY_DB_NAME
     stamp = _file_stamp(path)
     if stamp is not None:
@@ -540,7 +540,7 @@ def _send(conn: sqlite3.Connection, limit: int) -> SendResult:
         return result
     _status["last_try_at"] = _now()
     try:
-        folder = shared_settings.shared_dir()
+        folder = shared_settings.history_dir()
         if not folder.is_dir():
             raise HistoryError(f"共有フォルダに届きません: {folder}")
         ids = [r["送信ID"] for r in rows]

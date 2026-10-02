@@ -132,6 +132,7 @@ class Snapshot:
     read_at: str = ""
     master: "Master" = field(default_factory=lambda: Master())
     json_problem: str = ""          # 控えのJSONが読めない理由
+    json_path: Optional[Path] = None  # 控えのJSONのフォルダ(既定は共有フォルダと同じ)
 
     def get(self, key: str) -> Any:
         return self.values.get(key)
@@ -153,7 +154,7 @@ class Snapshot:
             "share_read_at": self.read_at,
             "share_updated_at": str(self.values.get("updated_at") or ""),
             "share_updated_by": str(self.values.get("updated_by") or ""),
-            "share_json": str(self.path / FILE_NAME),
+            "share_json": str((self.json_path or self.path) / FILE_NAME),
             "share_json_problem": self.json_problem,
             "share_master": str(self.master.path or ""),
             "share_master_state": self.master.state if self.reachable else "",
@@ -191,17 +192,41 @@ class Master:
 # ==================================================================
 # 置き場所
 # ==================================================================
+def _configured(key: str) -> Optional[Path]:
+    value = user_settings.get(key)
+    if isinstance(value, str) and value.strip():
+        return config.resolve_dir(value)
+    return None
+
+
 def shared_dir() -> Path:
-    """共有フォルダ。設定画面の値(端末ごと)を優先する。"""
-    configured = user_settings.get(config.KEY_SHARED_DIR)
-    if isinstance(configured, str) and configured.strip():
-        return config.resolve_dir(configured)
-    return config.SHARED_DIR
+    """共有フォルダ(梱包資材マスタのフォルダ)。設定画面の値(端末ごと)を優先する。"""
+    return _configured(config.KEY_SHARED_DIR) or config.SHARED_DIR
+
+
+def json_dir() -> Path:
+    """控えのJSON(管理者パスワード・右上の文字の控え)のフォルダ。
+
+    **既定は梱包資材マスタのフォルダと同じ。** 設定で別の場所にできる(VER 0.13.10。
+    現場の指摘: 梱包明細履歴.sqlite3 と 梱包明細打ち出し.json をそれぞれ設定できるように)。
+    書くときの鍵(`梱包明細打ち出し.json.lock`)もここに置く。
+    """
+    return _configured(config.KEY_SHARED_JSON_DIR) or shared_dir()
+
+
+def history_dir() -> Path:
+    """明細の履歴(梱包明細履歴.sqlite3)のフォルダ。既定は梱包資材マスタのフォルダと同じ。"""
+    return _configured(config.KEY_HISTORY_DIR) or shared_dir()
 
 
 def shared_path() -> Path:
     """控えのJSON。"""
-    return shared_dir() / FILE_NAME
+    return json_dir() / FILE_NAME
+
+
+def _place_key(folder: Path, jfolder: Path) -> str:
+    """写しの「どこから読んだか」。**同じフォルダなら前と同じ書き方**(前の写しを生かす)。"""
+    return str(folder) if folder == jfolder else f"{folder} | {jfolder}"
 
 
 def master_path() -> Optional[Path]:
@@ -303,8 +328,10 @@ def _read_master(folder: Path) -> Master:
     return Master(path, True, value, tuple(int(r["__rowid"]) for r in hits), "", note)
 
 
-def _read_all(folder: Path) -> dict[str, Any]:
+def _read_all(folder: Path, jfolder: Optional[Path] = None) -> dict[str, Any]:
     """共有の2つを読む(マスタと控えのJSON)。**届かなければ SharedError。**
+
+    `folder` は梱包資材マスタのフォルダ、`jfolder` は控えのJSONのフォルダ(省けば同じ)。
 
     フォルダが無いのは2通りある。
 
@@ -315,13 +342,15 @@ def _read_all(folder: Path) -> dict[str, Any]:
     JSONが壊れていてもマスタは読む(逆も同じ)── 片方の不具合で、正しい
     ほうまで捨てない。
     """
-    if not folder.is_dir():
-        if folder.parent.is_dir():
-            return {"json": None, "json_problem": "", "master": Master()}
-        raise SharedError(f"共有フォルダに届きません: {folder}")
+    jfolder = jfolder or folder
+    if not jfolder.is_dir():
+        if jfolder.parent.is_dir():
+            return {"json": None, "json_problem": "",
+                    "master": _read_master(folder) if folder != jfolder else Master()}
+        raise SharedError(f"共有フォルダに届きません: {jfolder}")
     json_data, json_problem = None, ""
     try:
-        json_data = _read_json(folder / FILE_NAME)
+        json_data = _read_json(jfolder / FILE_NAME)
     except SharedError as exc:
         json_problem = str(exc)
     return {"json": json_data, "json_problem": json_problem,
@@ -332,7 +361,7 @@ def _read_all(folder: Path) -> dict[str, Any]:
 class _Job:
     """いま共有を読んでいる1本。**並んで来た要求は、これを一緒に待つ。**"""
 
-    path: Path
+    path: tuple
     thread: threading.Thread
     box: dict[str, Any]
     started: float
@@ -344,8 +373,8 @@ _inflight_lock = threading.Lock()
 _inflight: Optional[_Job] = None
 
 
-def _read_bounded(path: Path, timeout: float) -> dict[str, Any]:
-    """`_read_all` を `timeout` 秒まで待つ。`path` は共有フォルダ。
+def _read_bounded(path: Path, timeout: float, jpath: Optional[Path] = None) -> dict[str, Any]:
+    """`_read_all` を `timeout` 秒まで待つ。`path` は共有フォルダ、`jpath` は控えのフォルダ。
 
     **並んで来た要求は、読みかけの1本を一緒に待つ。** 紙面を開く要求と
     設定の読み込みは同時に来る。あとから来たほうが「読みかけがある」
@@ -358,9 +387,10 @@ def _read_bounded(path: Path, timeout: float) -> dict[str, Any]:
     読みには、待たずに写しを返す。
     """
     global _inflight
+    places = (path, jpath or path)
     with _inflight_lock:
         job = _inflight
-        if job is not None and job.thread.is_alive() and job.path == path:
+        if job is not None and job.thread.is_alive() and job.path == places:
             waited = time.monotonic() - job.started
             if job.stalled or waited >= timeout:
                 raise SharedError(
@@ -371,11 +401,13 @@ def _read_bounded(path: Path, timeout: float) -> dict[str, Any]:
 
             def run() -> None:
                 try:
-                    box["data"] = _read_all(path)
+                    # 同じフォルダなら前と同じ呼び方(引数1つ)
+                    box["data"] = (_read_all(path) if places[1] == path
+                                   else _read_all(*places))
                 except BaseException as exc:              # noqa: BLE001
                     box["error"] = exc
 
-            job = _Job(path, threading.Thread(target=run, name="shared-read",
+            job = _Job(places, threading.Thread(target=run, name="shared-read",
                                               daemon=True), box, time.monotonic())
             _inflight = job
             job.thread.start()
@@ -443,13 +475,16 @@ def _compose(found: dict[str, Any]) -> dict[str, Any]:
     return values
 
 
-def _store_cache(path: Path, values: dict[str, Any], read_at: str) -> None:
-    """写しを残す。**中身が変わったときだけ書く**(紙面を開くたびに書かない)。"""
+def _store_cache(key: str, values: dict[str, Any], read_at: str) -> None:
+    """写しを残す。**中身が変わったときだけ書く**(紙面を開くたびに書かない)。
+
+    `key` は「どこから読んだか」(`_place_key`)。
+    """
     cached = user_settings.get(CACHE_KEY)
-    if (isinstance(cached, dict) and cached.get("path") == str(path)
+    if (isinstance(cached, dict) and cached.get("path") == str(key)
             and cached.get("values") == values):
         return
-    user_settings.save(CACHE_KEY, {"path": str(path), "values": values,
+    user_settings.save(CACHE_KEY, {"path": str(key), "values": values,
                                    "read_at": read_at})
 
 
@@ -461,6 +496,7 @@ _mirror_thread: Optional[threading.Thread] = None
 
 
 def _sync_mirror(folder: Path, value: str) -> None:
+    """控えのJSON(`folder` は控えのフォルダ)を、マスタの値に合わせる。"""
     try:
         with _locked(folder):
             path = folder / FILE_NAME
@@ -475,6 +511,7 @@ def _sync_mirror(folder: Path, value: str) -> None:
 
 
 def _mirror_later(folder: Path, found: dict[str, Any]) -> None:
+    """`folder` は控えのJSONのフォルダ。"""
     global _mirror_done, _mirror_thread
     master: Master = found["master"]
     if master.value is None or found["json_problem"]:
@@ -496,8 +533,10 @@ def read(*, timeout: float = READ_TIMEOUT_SEC) -> Snapshot:
     """いまの共有の値。**届かなくても例外にしない**(写しか既定で返す)。"""
     _warn_legacy()
     folder = shared_dir()
+    jfolder = json_dir()
+    key = _place_key(folder, jfolder)
     try:
-        found = _read_bounded(folder, timeout)
+        found = _read_bounded(folder, timeout, jfolder)
         if found["master"].value is None and found["json_problem"]:
             # マスタに値が無く、頼みの控えも読めない。**既定で刷らず**、
             # 届かないときと同じく最後に読んだ値で刷る
@@ -506,19 +545,19 @@ def read(*, timeout: float = READ_TIMEOUT_SEC) -> Snapshot:
         problem = str(exc)
         _note_problem(problem)
         cached = user_settings.get(CACHE_KEY)
-        if (isinstance(cached, dict) and cached.get("path") == str(folder)
+        if (isinstance(cached, dict) and cached.get("path") == key
                 and isinstance(cached.get("values"), dict)):
             return Snapshot(dict(cached["values"]), "cache", folder, problem,
-                            str(cached.get("read_at") or ""))
-        return Snapshot({}, "none", folder, problem, "")
+                            str(cached.get("read_at") or ""), json_path=jfolder)
+        return Snapshot({}, "none", folder, problem, "", json_path=jfolder)
     _note_problem("")
     _note_master(found["master"])
     now = _now()
     values = _compose(found)
-    _store_cache(folder, values, now)
-    _mirror_later(folder, found)
+    _store_cache(key, values, now)
+    _mirror_later(jfolder, found)
     return Snapshot(values, "shared", folder, "", now, found["master"],
-                    found["json_problem"])
+                    found["json_problem"], jfolder)
 
 
 _last_master_state: Optional[str] = None
@@ -685,10 +724,11 @@ def update(changes: dict[str, Any]) -> Written:
     if unknown:
         raise ValueError(f"共有しない値です: {sorted(unknown)}")
     folder = shared_dir()
-    _ensure_folder(folder)
+    jfolder = json_dir()
+    _ensure_folder(jfolder)
 
     to_master, note = False, ""
-    with _locked(folder):
+    with _locked(jfolder):
         if "qa_mark" in changes:
             master = _read_master(folder)
             if master.problem:
@@ -698,10 +738,10 @@ def update(changes: dict[str, Any]) -> Written:
                 _write_master(master, str(changes["qa_mark"]))
                 to_master = True
         try:
-            current = _read_json(folder / FILE_NAME) or {}
+            current = _read_json(jfolder / FILE_NAME) or {}
             data = {**current, **changes, "format": FORMAT,
                     "updated_at": _now(), "updated_by": _who()}
-            _write_json(folder, data)
+            _write_json(jfolder, data)
         except SharedError as exc:
             if not to_master:
                 raise
@@ -709,15 +749,15 @@ def update(changes: dict[str, Any]) -> Written:
             note = f"控えのJSONには書けませんでした({exc})。"
             log.warning("控えのJSONに書けませんでした(マスタには書いた): %s", exc)
 
-    found = _read_all(folder)
+    found = _read_all(folder, jfolder)
     now = _now()
     values = _compose(found)
-    _store_cache(folder, values, now)
+    _store_cache(_place_key(folder, jfolder), values, now)
     _note_problem("")
     log.info("共有の設定を変えました: %s (%s)", ", ".join(sorted(changes)),
              "梱包資材マスタ＋控えのJSON" if to_master else "JSON")
     return Written(Snapshot(values, "shared", folder, "", now, found["master"],
-                            found["json_problem"]), to_master, note)
+                            found["json_problem"], jfolder), to_master, note)
 
 
 def reset_for_tests() -> None:

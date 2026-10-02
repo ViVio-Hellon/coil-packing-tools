@@ -61,6 +61,8 @@ export function wire(given) {
   $("btnLotSave").addEventListener("click", () => saveFolder("lot"));
   $("btnKonpoSave").addEventListener("click", () => saveFolder("konpo"));
   $("btnShareSave").addEventListener("click", saveShareDir);
+  $("btnHistorySave").addEventListener("click", () => savePlace("history"));
+  $("btnJsonSave").addEventListener("click", () => savePlace("json"));
   $("btnExportSave").addEventListener("click", saveExportDir);
   $("btnQaSave").addEventListener("click", () => saveQa(false));
   $("btnQaReset").addEventListener("click", () => saveQa(true));
@@ -68,6 +70,8 @@ export function wire(given) {
   // パスワード欄で Enter なら「保存」。**ダイアログを閉じない**
   for (const [id, fn] of [["setQaPassword", () => saveQa(false)],
                           ["setSharePassword", saveShareDir],
+                          ["setHistoryPassword", () => savePlace("history")],
+                          ["setJsonPassword", () => savePlace("json")],
                           ["setAdminConfirm", saveAdminPassword]]) {
     $(id).addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); fn(); }
@@ -100,11 +104,12 @@ export async function open({ tab = "", focus = "" } = {}) {
   const seq = ++openSeq;
   const dialog = $("settingsDialog");
   for (const id of ["setQaValue", "setQaPassword", "setAdminCurrent", "setAdminNew",
-                    "setAdminConfirm", "setSharePassword", "distPassword"]) {
+                    "setAdminConfirm", "setSharePassword", "setHistoryPassword",
+                    "setJsonPassword", "distPassword"]) {
     $(id).value = "";
   }
   for (const id of ["setLotResult", "setKonpoResult", "setExportResult", "setShareNote", "setQaNote",
-                    "setAdminNote", "distNote"]) {
+                    "setAdminNote", "distNote", "setHistoryNote", "setJsonNote"]) {
     showNote(id, "");
   }
   selectTab(tab || lastTab);
@@ -182,14 +187,25 @@ function renderLocal(body, { fill = false } = {}) {
     $("setLotDir").value = body.lot_db_dir_setting || "";
     $("setKonpoDir").value = body.konpo_db_dir_setting || "";
     $("setShareDir").value = body.share_setting || "";
+    $("setHistoryDir").value = body.history_setting || "";
+    $("setJsonDir").value = body.json_setting || "";
     $("setExportDir").value = body.export_dir_setting || "";
   }
   // **このフォルダに何を探しているか。** 道だけ出しても、そこへ
   // 何を置けばよいかが分からない
   $("setLotFiles").textContent = `探すファイル: ${body.lot_files.join(" / ")}`;
   $("setKonpoFiles").textContent = `探すファイル: ${body.konpo_files.join(" / ")}`;
-  $("setShareFiles").textContent =
-    `ここにあるもの: ${body.master_db_name} / ${body.history_db_name} / ${body.share_file}`;
+  // 明細の履歴・控えのJSONを別の場所にしていれば、ここには無い(VER 0.13.10)
+  const here = [body.master_db_name];
+  if (body.history_dir === body.share_dir) here.push(body.history_db_name);
+  if (body.json_dir === body.share_dir) here.push(body.share_file);
+  $("setShareFiles").textContent = `ここにあるもの: ${here.join(" / ")}`;
+  for (const [key, dir, setting] of [["History", body.history_dir, body.history_setting],
+                                     ["Json", body.json_dir, body.json_setting]]) {
+    $(`set${key}Dir`).placeholder = `空なら梱包資材マスタのフォルダと同じ: ${body.share_dir}`;
+    $(`set${key}Now`).textContent = `いま見ている場所: ${dir}`
+      + (setting ? "" : "（梱包資材マスタのフォルダと同じ）");
+  }
   $("setLotNote").textContent = `いま見ている場所: ${body.lot_db_dir}`;
   $("setKonpoNote").textContent = `いま見ている場所: ${body.konpo_db_dir}`;
   $("setLotDir").placeholder = `空なら既定: ${body.lot_db_dir_default}`;
@@ -381,6 +397,40 @@ async function saveShareDir() {
       $("setSharePassword").focus();
     } else {
       $("setShareDir").focus();
+    }
+  } finally {
+    stop();
+    button.disabled = false;
+  }
+}
+
+/**
+ * 明細の履歴・控えのJSONの置き場所(VER 0.13.10)。管理者パスワードが要る。
+ * 保存したら、新しい場所に何があるか(無ければどうなるか)をそのまま出す。
+ */
+async function savePlace(which) {
+  const key = which === "history" ? "History" : "Json";
+  const button = $(`btn${key}Save`);
+  button.disabled = true;
+  showNote(`set${key}Note`, "");
+  const stop = waiting($("setLoading"), "新しい置き場所を確かめています…");
+  try {
+    const body = await api.post("/api/settings/shared-dir", {
+      which,
+      value: $(`set${key}Dir`).value,
+      password: $(`set${key}Password`).value,
+    });
+    $(`set${key}Password`).value = "";
+    renderLocal(body);
+    renderQa(body);
+    showNote(`set${key}Note`, body.message, /届きません|ありません/.test(body.message));
+  } catch (err) {
+    if (!refused(err, `set${key}Note`)) return;
+    if (err.field === "password") {
+      $(`set${key}Password`).value = "";
+      $(`set${key}Password`).focus();
+    } else {
+      $(`set${key}Dir`).focus();
     }
   } finally {
     stop();

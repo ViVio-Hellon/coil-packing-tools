@@ -4,7 +4,7 @@
 
     python tools/e2e_scenarios.py                 # 一連の流れ → 交互に使う → 放置する
     python tools/e2e_scenarios.py --quick         # 放置を短くする(動きの確認用)
-    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / storage / master / trail / idle のどれかだけ
+    python tools/e2e_scenarios.py --only flow     # flow / alternate / multitab / storage / master / trail / theme / idle のどれかだけ
 
 【何をするか】
 本物の起動(`start_app.py`)で統合アプリを立て、実ブラウザ(Chromium)で統合画面を開き、
@@ -39,6 +39,8 @@
 6. エラーの後追い(`--only trail`)
    画面でわざとエラーを起こし、番号が出る → 「中身を見る」で記録(なぜなぜの欄つき)が開く。
    上の帯の「ログ」で出力先を変えると、すぐ PC の名前のフォルダに書かれる → 既定に戻す
+7. 配色(`--only theme`)
+   ブラウザの外観がダークのとき、3機能の背景が暗くそろう。印刷用のタブとバーコードは白地のまま
 
 【要るもの】Playwright と Chromium(`tools/smoke_shell.py` と同じ)。現場の PC には要らない。
 """
@@ -556,6 +558,12 @@ def scenario_flow(app: App, ctx, sh: Shell, note: dict) -> None:
     rep = info.value
     rep.wait_for_load_state()
     check("資材計算: 発注票の印刷が別タブで開く", "発注票" in rep.title(), rep.url.split("?")[0])
+    # プレビューの「印刷する」で印刷のダイアログが開く(0.2.9。ダイアログの代わりに数える)
+    rep.evaluate("() => { window.__printed = 0; window.print = () => { window.__printed++; }; }")
+    ok = visible(rep, "#printNow")
+    if ok:
+        rep.click("#printNow")
+    check("資材計算: 発注票のプレビューに「印刷する」", ok and rep.evaluate("window.__printed") == 1)
     rep.close()
     fr.click("#commit")
     check("資材計算: 発注を履歴に残す", material_toast(fr, "履歴に残しました"), text(fr, "#toast"))
@@ -858,7 +866,7 @@ def scenario_storage(app: App, ctx, sh: Shell, note: dict, shots: str = "") -> N
     shot(d, "details_storage")
     d.click("#tabPlace")
     badges = d.locator("#panelPlace .where-local").count()
-    check("保存先: 梱包明細 置き場所の欄ごとに「このPCに保存」の札", badges == 4, badges)
+    check("保存先: 梱包明細 置き場所の欄ごとに「このPCに保存」の札", badges == 6, badges)
     shot(d, "details_place")
     d.click("#btnSettingsClose")
 
@@ -1065,6 +1073,43 @@ def scenario_trail(app: App, ctx, sh: Shell, note: dict) -> None:
     check("後追い: 既定に戻す", ok, lf.locator("#nowDir").text_content())
     sh.page.click("#logClose")
     check("後追い: 見たあとも3機能とも使える", sh.ready(10), sh.trouble())
+
+
+# ======================================================================
+# 配色: ブラウザの「全体的な外観」がダークのとき、3機能の背景がそろう(統合 1.0.13)
+# ======================================================================
+_BG = """() => {
+  const c = getComputedStyle(document.body).backgroundColor.match(/\\d+(\\.\\d+)?/g).map(Number);
+  return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+}"""
+
+
+def scenario_theme(app: App, browser, note: dict) -> None:
+    """ダークの外観で、3機能の画面の背景が暗い(ペナラベルだけ明るい、が無い)。
+    印刷用のタブ(紙)とバーコードは白地のまま。"""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, color_scheme="dark")
+    try:
+        sh = Shell(ctx, app)
+        sh.ready(20)
+        lum = {}
+        for key in ("details", "pena", "material"):
+            fr = sh.tab(key)
+            lum[key] = round(fr.evaluate(_BG), 2)
+        check("配色: ダークの外観で3機能とも背景が暗い", all(v < 0.2 for v in lum.values()), lum)
+        pg = ctx.new_page()
+        for path in ("/pena/labels/print?ob=5", "/pena/tare/print"):
+            pg.goto(app.base + path)
+            pg.wait_for_timeout(500)
+            check(f"配色: 印刷用のタブは白地のまま({path.split('?')[0]})",
+                  pg.evaluate(_BG) > 0.95, round(pg.evaluate(_BG), 2))
+        pg.goto(app.base + "/pena/labels/print?ob=5")
+        fills = pg.evaluate("""() => [...document.querySelectorAll('svg rect')].slice(0, 3)
+            .map(r => r.getAttribute('fill'))""")
+        check("配色: バーコードは白地に黒のまま", not fills or (fills[0] == "#fff"
+              and "#000" in fills), fills)
+        pg.close()
+    finally:
+        ctx.close()
 
 
 # ======================================================================
@@ -1286,7 +1331,7 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--only", choices=("flow", "alternate", "multitab", "storage", "master", "trail",
-                                       "idle"))
+                                       "theme", "idle"))
     ap.add_argument("--shots", default="", help="保存先の画面の写しを置くフォルダ")
     ap.add_argument("--quick", action="store_true", help="放置を短くする")
     ap.add_argument("--keep", action="store_true", help="試験用の置き場所を残す")
@@ -1327,6 +1372,8 @@ def main(argv=None) -> int:
             scenario_master(app, ctx, sh, note)
         if args.only in (None, "trail"):
             scenario_trail(app, ctx, sh, note)
+        if args.only in (None, "theme"):
+            scenario_theme(app, br, note)
         if args.only in (None, "idle"):
             minutes = ({"visible": 125, "hidden": 125, "sleep": 30, "report": 110} if args.quick else
                        {"visible": 360, "hidden": 300, "sleep": 120, "report": 150})

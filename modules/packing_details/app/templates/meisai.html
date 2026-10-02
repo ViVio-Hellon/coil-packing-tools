@@ -234,7 +234,8 @@
         {#- **どこを見るか**はこのPCに保存。中身は全ラインで共有(現場の指摘: このPCで
             引き継ぐものと、複数のPCで共有するものは違う) -#}
         <span class="stamp">どのフォルダを見るかは<b>このPCに保存</b>します（ほかのPCは変わりません）。
-          フォルダの中身（右上の文字・管理者パスワード・明細の履歴）は<b>全ラインで共有</b>です。</span>
+          フォルダの中身（右上の文字・管理者パスワード・明細の履歴）は<b>全ラインで共有</b>です。
+          明細の履歴と管理者パスワードのファイルは、下でそれぞれ別の場所にもできます。</span>
         <span class="stamp files" id="setShareFiles"></span>
         <span class="stamp" id="setShareUses">「マスタ管理」「履歴」・紙面の右上の文字は、この場所を見ます。</span>
         <input type="text" id="setShareDir" spellcheck="false" autocomplete="off" aria-labelledby="setShareHead">
@@ -247,6 +248,43 @@
           <button type="button" class="primary" id="btnShareSave">保存</button>
         </div>
         <p class="set-note" id="setShareNote" role="status" hidden></p>
+      </section>
+
+      {#- 共有の2つのファイルを、それぞれ別の場所にする(VER 0.13.10。現場の指摘:
+          梱包明細履歴.sqlite3 と 梱包明細打ち出し.json をそれぞれ設定できるように)。
+          空なら梱包資材マスタのフォルダと同じ。どちらも全ラインで共有するので守る -#}
+      <section class="set-box set-box-shared" id="setHistoryBox" aria-labelledby="setHistoryHead">
+        <div class="set-box-head"><span id="setHistoryHead">明細の履歴のフォルダ（梱包明細履歴.sqlite3）</span><span class="where where-local">このPCに保存</span>
+          <span class="stamp">変えるには管理者パスワードが要ります</span></div>
+        <span class="stamp files">置くファイル: 梱包明細履歴.sqlite3（出力した明細の履歴。全ライン・3年）</span>
+        <span class="stamp">「履歴」と「マスタ管理」の梱包明細履歴は、この場所を見ます。無ければ次に出力したときに作ります。</span>
+        <input type="text" id="setHistoryDir" spellcheck="false" autocomplete="off" aria-labelledby="setHistoryHead">
+        <span class="stamp" id="setHistoryNow"></span>
+        <div class="set-row set-row-inline">
+          <label for="setHistoryPassword">管理者パスワード</label>
+          <input type="password" id="setHistoryPassword" autocomplete="off">
+        </div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnHistorySave">保存</button>
+        </div>
+        <p class="set-note" id="setHistoryNote" role="status" hidden></p>
+      </section>
+
+      <section class="set-box set-box-shared" id="setJsonBox" aria-labelledby="setJsonHead">
+        <div class="set-box-head"><span id="setJsonHead">管理者パスワード・控えのフォルダ（梱包明細打ち出し.json）</span><span class="where where-local">このPCに保存</span>
+          <span class="stamp">変えるには管理者パスワードが要ります</span></div>
+        <span class="stamp files">置くファイル: 梱包明細打ち出し.json（管理者パスワードと、右上の文字の控え）</span>
+        <span class="stamp">管理者パスワードはこのファイルだけにあります。場所を変えると、新しい場所のファイルのパスワードになります。</span>
+        <input type="text" id="setJsonDir" spellcheck="false" autocomplete="off" aria-labelledby="setJsonHead">
+        <span class="stamp" id="setJsonNow"></span>
+        <div class="set-row set-row-inline">
+          <label for="setJsonPassword">管理者パスワード</label>
+          <input type="password" id="setJsonPassword" autocomplete="off">
+        </div>
+        <div class="set-qa-buttons">
+          <button type="button" class="primary" id="btnJsonSave">保存</button>
+        </div>
+        <p class="set-note" id="setJsonNote" role="status" hidden></p>
       </section>
 
       <p class="stamp" style="margin-top:4px">

@@ -532,3 +532,95 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
 .store-table td.store-name{white-space:nowrap; font-weight:700}
 .store-table td.store-path{word-break:break-all; font-size:11.5px}
 .store-note{display:block; font-size:11px; color:#5b6570; margin-top:2px}
+
+/* ==========================================================================
+   暗い配色(統合版 1.5.9。現場の指摘: 梱包明細・資材計算はブラウザの
+   「全体的な外観」がダークだと暗くなるのに、ペナラベルだけ明るいままで
+   背景色がそろっていなかった)。
+
+   **画面だけ。** 紙・ラベルは白のまま(バーコードは白地に黒で描く ──
+   barcode39.py が色を自分で持つので、配色に左右されない)。
+   - 印刷(@media print)は明るい配色のまま(下の定義は screen のときだけ)
+   - 印刷用のタブ(body.print-only)は紙そのものなので明るいまま
+   - 画面の中の紙(.sheet .label .labelsheet .lbl)も明るいまま
+   ========================================================================== */
+@media screen and (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#101a1e; --panel:#17242a; --line:#2e434c; --ink:#e6eef1; --muted:#a9bcc4;
+    --accent:#5cc6cf; --accent-ink:#0b2a2e; --warn:#e59450; --err:#f07672; --ok:#6fc58e;
+    --focus:#5cc6cf; --head:#1e2e35;
+    --sunken:#1e2e35; --stripe:#1a282e; --hi:#3a3218;
+    --ok-soft:#1d3527; --ok-line:#2f5a3e; --warn-soft:#3a2a18; --warn-line:#6b4a24;
+    --err-soft:#3d2020; --err-line:#6e3431; --info-soft:#17303d; --info-line:#2b4b5e;
+    --input:#1c2a30;
+  }
+  :root:not([data-theme="light"]) body:not(.print-only) .src-access,
+  :root:not([data-theme="light"]) body:not(.print-only) .src-sqlite,
+  :root:not([data-theme="light"]) body:not(.print-only) .conn.ok,
+  :root:not([data-theme="light"]) body:not(.print-only) .pill.ok,
+  :root:not([data-theme="light"]) body:not(.print-only) .okbox{background:var(--ok-soft); color:var(--ok); border-color:var(--ok-line)}
+  :root:not([data-theme="light"]) body:not(.print-only) .src-csv,
+  :root:not([data-theme="light"]) body:not(.print-only) .pill.warn,
+  :root:not([data-theme="light"]) body:not(.print-only) .warnbox,
+  :root:not([data-theme="light"]) body:not(.print-only) .layer-restart,
+  :root:not([data-theme="light"]) body:not(.print-only) .card.warn{background:var(--warn-soft); color:var(--warn); border-color:var(--warn-line)}
+  :root:not([data-theme="light"]) body:not(.print-only) .card.warn code{background:#4a3520}
+  :root:not([data-theme="light"]) body:not(.print-only) .src.stale,
+  :root:not([data-theme="light"]) body:not(.print-only) .conn.ng,
+  :root:not([data-theme="light"]) body:not(.print-only) .errbox,
+  :root:not([data-theme="light"]) body:not(.print-only) .stalebox{background:var(--err-soft); color:var(--err); border-color:var(--err-line)}
+  :root:not([data-theme="light"]) body:not(.print-only) .stalebox b{color:var(--err)}
+  :root:not([data-theme="light"]) body:not(.print-only) .size-row label:hover{background:#ffffff14}
+  /* サイズの色分け(VBA の色)はそのまま。字は黒で読めるように */
+  :root:not([data-theme="light"]) body:not(.print-only) .sz-head{color:#16202c}
+  :root:not([data-theme="light"]) body:not(.print-only) .sz-10-63 .sz-head{color:#fff}
+  :root:not([data-theme="light"]) body:not(.print-only) .cur-tbl tbody th,
+  :root:not([data-theme="light"]) body:not(.print-only) .block tr.sum td,
+  :root:not([data-theme="light"]) body:not(.print-only) .pack .out{background:var(--sunken)}
+  :root:not([data-theme="light"]) body:not(.print-only) input[type=text],
+  :root:not([data-theme="light"]) body:not(.print-only) input[type=number],
+  :root:not([data-theme="light"]) body:not(.print-only) input[type=password],
+  :root:not([data-theme="light"]) body:not(.print-only) select{background:var(--input); color:var(--ink)}
+  :root:not([data-theme="light"]) body:not(.print-only) input[readonly],
+  :root:not([data-theme="light"]) body:not(.print-only) .take.off input{background:var(--sunken); color:var(--muted)}
+  :root:not([data-theme="light"]) body:not(.print-only) .btn{background:linear-gradient(#24343c,#1c2a30); color:var(--ink)}
+  :root:not([data-theme="light"]) body:not(.print-only) .btn:hover{background:linear-gradient(#2c3e47,#22323a)}
+  :root:not([data-theme="light"]) body:not(.print-only) .btn:active{background:#1a262c}
+  :root:not([data-theme="light"]) body:not(.print-only) .btn-primary{background:#0e6a72; color:#fff; border-color:#2a8f98}
+  :root:not([data-theme="light"]) body:not(.print-only) .btn-primary:hover{background:#127a83}
+  :root:not([data-theme="light"]) body:not(.print-only) .btn-danger{background:linear-gradient(#2e2224,#261c1e);
+    border-color:var(--err-line); color:var(--err)}
+  :root:not([data-theme="light"]) body:not(.print-only) .subtab.on{background:#0e6a72; color:#fff; border-color:#2a8f98}
+  :root:not([data-theme="light"]) body:not(.print-only) .tbl,
+  :root:not([data-theme="light"]) body:not(.print-only) .card,
+  :root:not([data-theme="light"]) body:not(.print-only) .block,
+  :root:not([data-theme="light"]) body:not(.print-only) .pbar-card,
+  :root:not([data-theme="light"]) body:not(.print-only) .where{background:var(--panel)}
+  :root:not([data-theme="light"]) body:not(.print-only) .tbl tbody tr:nth-child(even){background:var(--stripe)}
+  :root:not([data-theme="light"]) body:not(.print-only) .tbl tbody tr.hi{background:var(--hi)}
+  :root:not([data-theme="light"]) body:not(.print-only) .layer-local{background:#17304a; color:#9cc6f0; border-color:#2b4d70}
+  :root:not([data-theme="light"]) body:not(.print-only) .layer-app{background:var(--sunken); color:var(--muted)}
+  :root:not([data-theme="light"]) body:not(.print-only) .layer-env{background:#2a1f3a; color:#c8b3e6; border-color:#4a3a66}
+  :root:not([data-theme="light"]) body:not(.print-only) .note-diff{background:var(--info-soft); color:#b9d6ea}
+  :root:not([data-theme="light"]) body:not(.print-only) #mTbl .sortbtn:hover{background:#ffffff14}
+  :root:not([data-theme="light"]) body:not(.print-only) .pbar{background:rgba(0,0,0,.5)}
+  :root:not([data-theme="light"]) body:not(.print-only) .pbar-track{background:var(--sunken)}
+  :root:not([data-theme="light"]) body:not(.print-only) .pbar-text,
+  :root:not([data-theme="light"]) body:not(.print-only) .where-dist,
+  :root:not([data-theme="light"]) body:not(.print-only) .store-note{color:var(--muted)}
+  :root:not([data-theme="light"]) body:not(.print-only) .pwdialog{background:var(--panel); color:var(--ink);
+    border-color:var(--line)}
+  :root:not([data-theme="light"]) body:not(.print-only) .pwstate.ok{color:var(--ok)}
+  :root:not([data-theme="light"]) body:not(.print-only) .pwstate.ng{color:var(--err)}
+}
+
+/* 紙(印刷用のタブ・画面の中の台紙・ラベル)は、どの配色でも白地に黒 */
+body.print-only, .sheet, .label, .labelsheet, .lbl{
+  color-scheme:light;
+  --bg:#fff; --panel:#fff; --line:#c6cdd6; --ink:#16202c; --muted:#5d6b7a; --head:#dfe6ef;
+  --accent:#1457a8; --accent-ink:#fff; --warn:#a35a00; --err:#b3261e; --ok:#1c7a3e;
+  --focus:#0b63ce; --sunken:#f4f6f9; --stripe:#f7f9fb; --hi:#fff6d6; --input:#ffffe0;
+}
+body.print-only{background:#fff; color:var(--ink)}
+.lbl{color:#16202c}

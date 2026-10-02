@@ -184,6 +184,10 @@ KEY_ADMIN_PASSWORD = "admin_password"
 KEY_SHARED_DIR = "shared_dir"           # 共有の設定フォルダ(端末ごとに差し替え)
 KEY_SHARED_CACHE = "shared_cache"       # 共有から最後に読んだ値の写し
 KEY_EXPORT_DIR = "export_dir"           # CSV の出力先(マスタ管理・明細の履歴)
+# 共有の2つのファイルの置き場所(既定は梱包資材マスタのフォルダと同じ。VER 0.13.10。
+# 現場の指摘: 梱包明細履歴.sqlite3 と 梱包明細打ち出し.json をそれぞれ設定できるように)
+KEY_HISTORY_DIR = "history_dir"         # 明細の履歴(梱包明細履歴.sqlite3)
+KEY_SHARED_JSON_DIR = "shared_json_dir"  # 管理者パスワード・右上の文字の控え(梱包明細打ち出し.json)
 
 # 管理者パスワードの既定(一度も変えていない端末で通る値)。
 #

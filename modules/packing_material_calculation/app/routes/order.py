@@ -115,4 +115,5 @@ def report():
     if not _pending["sheets"]:
         return "<p>発注票がまだ作られていません。</p>", 404
     rep = reports.build_order_sheet_report(_pending["sheets"])
-    return printing.render_html(rep)
+    # プレビューの上に「印刷する」(0.2.9。現場の指摘)
+    return printing.render_html(rep, print_button=True)

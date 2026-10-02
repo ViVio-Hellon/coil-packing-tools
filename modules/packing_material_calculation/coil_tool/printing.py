@@ -175,6 +175,13 @@ table.form th { background: #f0f0f0; font-weight: bold; }
   .sheet-no { max-width: __W__mm; margin: 0 auto 4px; font-weight: bold; }
 }
 @media print { .screen-only { display: none; } }
+/* 画面の上の「印刷する」(0.2.9。現場の指摘: 発注票のプレビューに印刷するボタンを)。
+   紙には出さない(.screen-only) */
+.printbar { display: flex; align-items: center; gap: 12px; }
+.printbar button { font: inherit; font-size: 14px; font-weight: bold; padding: 6px 22px;
+  border: 1px solid #1e5aa8; border-radius: 6px; background: #1f63b8; color: #fff;
+  cursor: pointer; }
+.printbar button:hover { background: #2470cc; }
 """
 
 # 画面で見たときだけ出る操作案内(印刷はされない)
@@ -302,11 +309,18 @@ _EDIT_SCRIPT = """
 """
 
 
-def render_html(report: Report, *, edit_url: str = "") -> str:
+# 画面の上に出す「印刷する」(紙には出ない)
+_PRINT_BAR = ('<div class="screen-only printbar">'
+              '<button type="button" id="printNow" onclick="window.print()">印刷する</button>'
+              '<span>押すと印刷のダイアログが開きます(Ctrl+P と同じ)。</span></div>')
+
+
+def render_html(report: Report, *, edit_url: str = "", print_button: bool = False) -> str:
     """帳票をHTML文字列にする。
 
     `edit_url` を渡すと、`editable()` で作った欄がその場で直せるように
     なる(直した内容はそのURLへ送り返す)。渡さなければ読むだけ。
+    `print_button` なら、画面の上に「印刷する」を出す(紙には出ない)。
     """
     if report.cut_in_half:
         # 左半分に収めて、真ん中に切り取り線。右半分は空けておく。
@@ -340,7 +354,8 @@ def render_html(report: Report, *, edit_url: str = "") -> str:
         f"<title>{escape(report.title)}</title>"
         f"<style>{report.setup.to_css()}\n{base_css}\n{extra_css}\n"
         f"{report.setup.extra_css}</style>"
-        f"</head><body>{_PRINT_HINT}{hint}{sheets}{script}</body></html>"
+        f"</head><body>{_PRINT_BAR if print_button else ''}{_PRINT_HINT}{hint}"
+        f"{sheets}{script}</body></html>"
     )
 
 

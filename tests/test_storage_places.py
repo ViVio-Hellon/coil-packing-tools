@@ -86,7 +86,7 @@ class DetailsStorageTest(unittest.TestCase):
         self.assertIn('id="tabStore"', html)
         self.assertIn('id="panelStore"', html)
         # 置き場所の4欄はこのPC、右上の文字・管理者パスワードは共有
-        self.assertEqual(html.count('class="where where-local"'), 4)
+        self.assertEqual(html.count('class="where where-local"'), 6)
         self.assertEqual(html.count('class="where where-shared"'), 2)
         self.assertIn("どのフォルダを見るかは<b>このPCに保存</b>", html)
 

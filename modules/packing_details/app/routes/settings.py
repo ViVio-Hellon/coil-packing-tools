@@ -83,6 +83,11 @@ def _local_state() -> dict:
         "share_file": shared_settings.FILE_NAME,
         "master_db_name": config.MASTER_DB_NAME,
         "history_db_name": config.HISTORY_DB_NAME,
+        # 共有の2つのファイルの置き場所(既定は梱包資材マスタのフォルダと同じ)
+        "history_dir": str(shared_settings.history_dir()),
+        "history_setting": user_settings.get(config.KEY_HISTORY_DIR, "") or "",
+        "json_dir": str(shared_settings.json_dir()),
+        "json_setting": user_settings.get(config.KEY_SHARED_JSON_DIR, "") or "",
         "distribution": distribution.summary(),
         "storage": _storage(),
     }
@@ -98,6 +103,8 @@ def _storage() -> dict:
     """
     P = storage_places.Place
     share = shared_settings.shared_dir()
+    jdir = shared_settings.json_dir()
+    hdir = shared_settings.history_dir()
     config_path = config.USER_CONFIG_PATH
     return storage_places.Places(
         local=[
@@ -114,9 +121,9 @@ def _storage() -> dict:
         shared=[
             P("紙面の右上の文字", str(share / config.MASTER_DB_NAME),
               "表「梱包明細打ち出し」の右上の文字。「紙面の右上の文字」の面で変える"),
-            P("管理者パスワード", str(share / shared_settings.FILE_NAME),
+            P("管理者パスワード", str(jdir / shared_settings.FILE_NAME),
               "管理者パスワード（撹拌した値）と右上の文字の控え。「管理者パスワード」の面で変える"),
-            P("明細の履歴", str(share / config.HISTORY_DB_NAME),
+            P("明細の履歴", str(hdir / config.HISTORY_DB_NAME),
               "出力した明細の履歴（全ライン・3年）。出力するたびにこのPCから送る"),
             P("仕掛台帳", str(config.lot_db_dir()),
               "取り込み元（" + " / ".join(config.LOT_DB_FILES.values()) + "）",
@@ -240,9 +247,23 @@ def change_admin_password():
     return jsonify({"ok": True, "message": result.message, **_qa_state()})
 
 
+# 共有の置き場所(どれも管理者パスワードで守る)。`which` → (設定の鍵, 呼び名, 置くファイル)
+SHARED_PLACES = {
+    "share": (config.KEY_SHARED_DIR, "梱包資材マスタのフォルダ（共有）", config.MASTER_DB_NAME),
+    "history": (config.KEY_HISTORY_DIR, "明細の履歴のフォルダ", config.HISTORY_DB_NAME),
+    "json": (config.KEY_SHARED_JSON_DIR, "管理者パスワード・控えのフォルダ",
+             shared_settings.FILE_NAME),
+}
+
+
 @bp.post("/api/settings/shared-dir")
 def set_shared_dir():
     """共有の設定フォルダを、**この端末だけ**差し替える。管理者パスワードが要る。
+
+    `which` で3つのどれかを選ぶ(既定 `share`)。VER 0.13.10 で、明細の履歴
+    (梱包明細履歴.sqlite3)と控えのJSON(梱包明細打ち出し.json)を**それぞれ**
+    別の場所にできるようにした(現場の指摘)。空なら梱包資材マスタのフォルダと同じ。
+    控えのJSONは管理者パスワードの置き場所なので、**いまの**パスワードで守る。
 
     既定の置き場所に書けない・届かない現場のための逃げ道。差し替えると
     刷る右上の文字の出どころが変わるので、守る。照合は**いまの**共有
@@ -253,10 +274,14 @@ def set_shared_dir():
     ので、差し替えた端末は画面にそう出す。
     """
     body = request.get_json(silent=True) or {}
+    which = str(body.get("which", "share") or "share")
+    if which not in SHARED_PLACES:
+        return jsonify(error_body("not_listed", "その置き場所は変えられません。", "which")), 400
+    key, label, file_name = SHARED_PLACES[which]
     if not admin_password.verify(str(body.get("password", ""))):
-        log.warning("共有の置き場所の変更を断りました(管理者パスワード)")
+        log.warning("共有の置き場所の変更を断りました(管理者パスワード): %s", label)
         return jsonify(error_body(
-            "need_password", "梱包資材マスタのフォルダ（共有）を変えるには管理者パスワードが要ります。",
+            "need_password", f"{label}を変えるには管理者パスワードが要ります。",
             "password")), 403
     value = str(body.get("value", "")).strip()
     if value:
@@ -265,10 +290,13 @@ def set_shared_dir():
         except ValueError as exc:
             return jsonify(error_body("bad_path", str(exc), "value")), 400
     else:
-        resolved = config.SHARED_DIR
-    if not user_settings.save(config.KEY_SHARED_DIR, value):
+        resolved = None
+    if not user_settings.save(key, value):
         return jsonify(error_body(
             "write_failed", "設定ファイルに書けませんでした。")), 500
+    if which != "share":
+        return _other_place_saved(which, label, file_name, value)
+    resolved = resolved or config.SHARED_DIR
     log.info("共有の置き場所を変えました(この端末): %s", resolved)
     state = _qa_state()
     if state["share_source"] == "shared":
@@ -280,6 +308,35 @@ def set_shared_dir():
     if value:
         message += "ほかのラインも同じ場所にしないと、共有になりません。"
     return jsonify({"ok": True, "message": message, **state})
+
+
+def _other_place_saved(which: str, label: str, file_name: str, value: str):
+    """明細の履歴・控えのJSONの置き場所を保存したあと。**そこに何があるか**を言う。
+
+    新しい場所にファイルが無いと、履歴は次の送りで作られ(前の場所の履歴は前の
+    場所に残る)、控えのJSONが無いと管理者パスワードは既定に戻る ── 黙らない。
+    """
+    folder = shared_settings.history_dir() if which == "history" else shared_settings.json_dir()
+    same = folder == shared_settings.shared_dir()
+    where = "梱包資材マスタのフォルダと同じ場所" if same and not value else str(folder)
+    log.info("%sを変えました(この端末): %s", label, folder)
+    if not folder.is_dir():
+        note = (f"{folder} に届きません(フォルダが無いか、共有に届いていません)。"
+                + ("届くまで、出力した明細の履歴はこのPCに残して、あとで送ります。"
+                   if which == "history" else
+                   "届くまで、右上の文字はこのPCの写しで刷ります。"))
+    elif (folder / file_name).exists():
+        note = f"{file_name} があります。いまからこれを使います。"
+    elif which == "history":
+        note = (f"まだ {file_name} がありません。次に出力したとき(または履歴を開いたとき)に"
+                "作ります。前の場所の履歴は前の場所に残ります。")
+    else:
+        note = (f"まだ {file_name} がありません。管理者パスワードは既定に戻り、右上の文字は"
+                "梱包資材マスタの値を使います。前の場所のファイルを写すと引き継げます。")
+    message = f"{label}を {where} にしました。{note}"
+    if value:
+        message += "ほかのラインも同じ場所にしないと、共有になりません。"
+    return jsonify({"ok": True, "message": message, **_qa_state(), **_local_state()})
 
 
 @bp.post("/api/settings")

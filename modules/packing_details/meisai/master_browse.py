@@ -6,7 +6,8 @@
 総合ツールの役目で、誰が直せるか(アクセス権限・管理者パスワード)の決まりも
 あちらにある。ここから書けると、その決まりを通らずに共有のマスタが変わる。
 
-見るファイル(どちらも共有フォルダ `shared_settings.shared_dir()` にある):
+見るファイル(既定はどちらも共有フォルダ `shared_settings.shared_dir()` にある。
+明細の履歴は設定で別の場所にできる ── `shared_settings.history_dir()`):
 
     梱包資材マスタ.sqlite3  … 総合ツールが直す。このアプリは表「梱包明細打ち出し」
                               (紙面の右上の文字)を読む
@@ -227,6 +228,13 @@ def _bounded(fn: Callable[[], Any], timeout: float) -> Any:
 # ==================================================================
 # 読む
 # ==================================================================
+def _folder_of(source: Source) -> Path:
+    """見るファイルのフォルダ。明細の履歴は設定で別の場所にできる(VER 0.13.10)。"""
+    if source.key == HISTORY:
+        return shared_settings.history_dir()
+    return shared_settings.shared_dir()
+
+
 def _find(source: Source, folder: Path) -> Path:
     """見るファイルの場所。**無ければ理由を言う**(届かないのか、無いのか)。"""
     if source.key == HISTORY:
@@ -383,7 +391,7 @@ def browse(source_key: str = "", table: str = "", *, query: str = "",
     マスタが**本当に入ったか**をここで確かめられるようにするため。
     """
     source = source_of(source_key)
-    folder = shared_settings.shared_dir()
+    folder = _folder_of(source)
 
     def blank() -> View:
         return View(source=source.key, label=source.label, source_note=source.note,
@@ -531,7 +539,7 @@ def export_csv(source_key: str, table: str, *, query: str = "", sort: str = "",
     掛ける。**書くだけ。** ファイルを開くのは使う人がすること。
     """
     source = source_of(source_key)
-    shared = shared_settings.shared_dir()
+    shared = _folder_of(source)
     path = _find(source, shared)
     out_dir = folder or config.export_dir()
     try:

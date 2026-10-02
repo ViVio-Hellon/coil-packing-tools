@@ -156,6 +156,47 @@ class PrintTabTest(unittest.TestCase):
                 self.assertTrue(href.startswith("/pena/labels/"), (path, href))
 
 
+class DarkThemeTest(unittest.TestCase):
+    """ブラウザの外観がダークのとき、ペナラベルも暗くする(1.5.9。現場の指摘: 梱包明細・
+    資材計算はダークなのにペナラベルだけ明るく、背景がそろっていなかった)。
+    紙(印刷用のタブ・台紙・ラベル)と印刷は明るいまま ── バーコードに影響させない。"""
+
+    def setUp(self):
+        from pathlib import Path
+        import modules.packing_pena_label as pena
+        self.css = (Path(pena.__file__).parent / "app/static/css/app.css").read_text(encoding="utf-8")
+
+    def _dark_block(self):
+        start = self.css.index("@media screen and (prefers-color-scheme:dark){")
+        return self.css[start:self.css.index("/* 紙(印刷用のタブ", start)]
+
+    def test_dark_is_for_the_screen_only(self):
+        self.assertIn("@media screen and (prefers-color-scheme:dark){", self.css)
+        self.assertNotIn("@media (prefers-color-scheme:dark)", self.css, "印刷に効かせない")
+
+    def test_element_rules_leave_the_print_tabs_alone(self):
+        rules = [l.strip() for l in self._dark_block().splitlines()
+                 if l.strip().startswith(':root:not([data-theme="light"]) ')
+                 and not l.strip().endswith("{")]
+        self.assertTrue(rules)
+        for rule in rules:
+            self.assertIn("body:not(.print-only)", rule, rule)
+
+    def test_paper_stays_light(self):
+        self.assertIn("body.print-only, .sheet, .label, .labelsheet, .lbl{", self.css)
+        paper = self.css[self.css.index("body.print-only, .sheet, .label, .labelsheet, .lbl{"):]
+        paper = paper[:paper.index("}")]
+        self.assertIn("color-scheme:light", paper)
+        for var in ("--bg:#fff", "--panel:#fff", "--ink:#16202c", "--sunken:", "--input:"):
+            self.assertIn(var, paper)
+
+    def test_barcodes_draw_their_own_colours(self):
+        from modules.packing_pena_label.app.services import barcode39
+        svg = barcode39.svg("W111111-0101", 30.0, 8.0)
+        self.assertIn('fill="#fff"', svg)
+        self.assertIn('fill="#000"', svg)
+
+
 class OtherTabsTest(unittest.TestCase):
     """本ツール以外のタブ(別のサイト・同じ PC の別のアプリ)からの送信は断る(1.0.7)。
 

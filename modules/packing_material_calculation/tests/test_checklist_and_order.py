@@ -482,6 +482,10 @@ def test_チェックリストを印刷しなくても発注票を出せる(clie
     page = client.get("/report/order?t=test-token")
     assert page.status_code == 200
     assert "発注票" in page.data.decode()
+    # プレビューの上に「印刷する」(0.2.9。現場の指摘)。紙には出ない
+    html = page.data.decode()
+    assert 'id="printNow" onclick="window.print()">印刷する</button>' in html
+    assert '<div class="screen-only printbar">' in html
 
 
 def _fixture_worker() -> str:
@@ -504,3 +508,13 @@ def test_画面の見本も紙1枚ずつに見せる():
     # 最後の要素は紙そのもの(`.sheet:last-child` で最後の改ページを止める)
     body = html.split("<body>")[1]
     assert body.rstrip().endswith("</div></div></body></html>")
+
+
+def test_印刷するボタンは紙に出さない():
+    """「印刷する」は画面だけ(`screen-only` は印刷で消える)。頼んだ帳票にだけ出す。"""
+    from modules.packing_material_calculation.coil_tool import printing, reports
+    rep = reports.build_order_sheet_report([_sheet("30×40")])
+    with_button = printing.render_html(rep, print_button=True)
+    assert "@media print { .screen-only { display: none; } }" in with_button
+    assert with_button.count("印刷する</button>") == 1
+    assert "印刷する</button>" not in printing.render_html(rep)

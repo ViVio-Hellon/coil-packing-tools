@@ -75,6 +75,8 @@ ITEMS: tuple[tuple[str, str, bool], ...] = (
     (config.KEY_LOT_DB_DIR, "仕掛台帳のフォルダ", True),
     (config.KEY_KONPO_DB_DIR, "梱包課共有の仕掛フォルダ", True),
     (config.KEY_SHARED_DIR, "梱包資材マスタのフォルダ（共有）", True),
+    (config.KEY_HISTORY_DIR, "明細の履歴のフォルダ", True),
+    (config.KEY_SHARED_JSON_DIR, "管理者パスワード・控えのフォルダ", True),
     (config.KEY_EXPORT_DIR, "CSVの出力先", True),
     (config.KEY_AUTO_IMPORT, "起動時の自動取り込み", True),
 )
@@ -91,7 +93,8 @@ NOT_INCLUDED: tuple[tuple[str, str], ...] = (
 # 項目ごとの値の形。**手で直した 設定.json の型違いを通さない**(文字の "false" を
 # 自動取り込みに入れると、`bool("false")` で「する」になる)
 _PATH_KEYS = frozenset({config.KEY_LOT_DB_DIR, config.KEY_KONPO_DB_DIR, config.KEY_SHARED_DIR,
-                        config.KEY_EXPORT_DIR})
+                        config.KEY_EXPORT_DIR, config.KEY_HISTORY_DIR,
+                        config.KEY_SHARED_JSON_DIR})
 _BOOL_KEYS = frozenset({config.KEY_AUTO_IMPORT})
 
 REFUSE_NEED_PASSWORD = "need_password"
