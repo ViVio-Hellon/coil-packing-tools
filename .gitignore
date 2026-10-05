@@ -30,3 +30,7 @@ venv/
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# デスクトップ版(Tauri)を作ったときにできるもの。`cargo build` で作り直せる
+src-tauri/target/
+src-tauri/gen/

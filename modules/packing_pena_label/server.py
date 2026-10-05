@@ -199,7 +199,9 @@ def build_blueprint(url_prefix: str = DEFAULT_PREFIX, *,
     def dispatch(path: str):
         # 統合アプリが決めたトークン・ポートを、画面へ渡す値へ写す
         ctx.cfg.app_token = current_app.config.get("TOKEN", "") or ""
-        if current_app.config.get("PORT"):
+        if current_app.config.get("BRIDGE"):
+            ctx.cfg.port = 0                    # デスクトップ版はポートを使わない
+        elif current_app.config.get("PORT"):
             ctx.cfg.port = int(current_app.config["PORT"])
         rel = "/" + path.rstrip("/") if path else "/"
         if request.method == "POST":

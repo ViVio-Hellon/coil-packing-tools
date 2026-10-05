@@ -66,12 +66,17 @@ class AccessBridge:
         stdout は VBScript 側で ASCII へ escape 済みなので何で読んでもよい。
         stderr は **cscript 自身のメッセージ**で、端末のコードページで来る。
         UTF-8 で読むと文字化けして原因が分からなくなる。
+
+        **黒い窓を出さない**(`CREATE_NO_WINDOW`)。画面の無い Python(ブラウザ版の
+        pythonw・デスクトップ版の外枠が起こす python)から呼ぶと、cscript は自分の
+        コンソールを作って一瞬黒い窓が出ていた(統合 1.1.0 で足した)。
         """
         return subprocess.run(
             cmd, capture_output=True, timeout=timeout or self.timeout_sec,
             stdin=subprocess.DEVNULL,
             encoding=("cp932" if os.name == "nt" else "utf-8"),
             errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
     def cscript_candidates(self) -> List[str]:

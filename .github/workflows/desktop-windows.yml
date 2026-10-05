@@ -1,0 +1,79 @@
+# デスクトップ版(Windows)を作って確かめる(python-web-tools の同名のものを移した)
+#
+# 作るもの: CoilPackingTools.exe(成果物 "CoilPackingTools-windows" から取れる)。
+# 配るときは、アプリのフォルダの直下(Start.vbs と同じ所)に置いてから
+# scripts\make_dist.py を流す(make_dist が「コイル梱包ツール.exe」の名前で入れる)。
+#
+# 確かめること(ラインPCと同じ Windows の上で):
+#   - Python の試験(統合アプリと3機能。標準入出力のやりとり・ファイルの錠・道の書き方は
+#     OS で違いが出やすい)
+#   - Rust の試験
+#   - 作った exe を本当に起動し、画面が Python から届くこと・ポートで待ち受けないこと・
+#     止めたら Python も終わること(scripts/desktop_smoke.py)
+name: デスクトップ版(Windows)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python の部品を入れる
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Python の試験(統合アプリ)
+        run: python -m pytest -q -p no:cacheprovider tests
+
+      - name: Python の試験(資材計算)
+        if: success() || failure()
+        run: python -m pytest -q -p no:cacheprovider modules/packing_material_calculation/tests
+
+      - name: Python の試験(梱包明細)
+        if: success() || failure()
+        run: python -m unittest discover -s modules/packing_details/tests -t .
+
+      - name: Python の試験(ペナラベル)
+        if: success() || failure()
+        run: python -m unittest discover -s modules/packing_pena_label/tests -t .
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: success() || failure()
+
+      - uses: Swatinem/rust-cache@v2
+        if: success() || failure()
+        with:
+          workspaces: src-tauri
+
+      - name: Rust の試験
+        if: success() || failure()
+        working-directory: src-tauri
+        run: cargo test --release
+
+      - name: exe を作る
+        id: build
+        if: success() || failure()
+        working-directory: src-tauri
+        run: cargo build --release
+
+      - name: 作った exe を起動して確かめる
+        if: (success() || failure()) && steps.build.outcome == 'success'
+        run: python scripts/desktop_smoke.py --exe src-tauri/target/release/CoilPackingTools.exe
+
+      - uses: actions/upload-artifact@v4
+        if: (success() || failure()) && steps.build.outcome == 'success'
+        with:
+          name: CoilPackingTools-windows
+          path: src-tauri/target/release/CoilPackingTools.exe
+          if-no-files-found: error

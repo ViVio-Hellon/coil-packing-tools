@@ -48,6 +48,9 @@ MIN_PYTHON = (3, 9)
 # `requirements.txt` に対応する import 名
 REQUIRED_PACKAGES = (("flask", "Flask"), ("waitress", "waitress"))
 
+# デスクトップ版(`bridge.py`)は待ち受けないので waitress は要らない
+BRIDGE_PACKAGES = (("flask", "Flask"),)
+
 # ブラウザを開いたあと、待ち受けが始まるのを待つ上限(秒)
 LISTEN_TIMEOUT_SEC = 15
 
@@ -78,11 +81,16 @@ def check_python_version() -> None:
             "https://www.python.org/downloads/ から新しいPythonを入れてください。")
 
 
-def check_packages() -> None:
-    """必須パッケージの有無。**入れ方まで示す**(基盤仕様書 ステップ5)。"""
+def check_packages(packages=None) -> None:
+    """必須パッケージの有無。**入れ方まで示す**(基盤仕様書 ステップ5)。
+
+    既定(`None`)はブラウザ版の一覧。デスクトップ版は `BRIDGE_PACKAGES`。
+    """
     import importlib.util
 
-    missing = [pip_name for module, pip_name in REQUIRED_PACKAGES
+    if packages is None:
+        packages = REQUIRED_PACKAGES
+    missing = [pip_name for module, pip_name in packages
                if importlib.util.find_spec(module) is None]
     if missing:
         raise StartupError(
@@ -230,10 +238,10 @@ def check_config() -> None:
         log().warning("%s", problem)
 
 
-def run_environment_checks() -> Path:
+def run_environment_checks(*, bridge: bool = False) -> Path:
     """順に確認する。落ちたところで理由が分かるように分けてある。"""
     check_python_version()
-    check_packages()
+    check_packages(BRIDGE_PACKAGES if bridge else None)
     root = check_writable()
     redirect_pycache(root)
     check_module_areas()
@@ -416,6 +424,14 @@ def start(mode: str, *, open_browser: bool = True) -> int:
                 "同時には動かせません。単体版の画面を閉じるか、単体版のフォルダの "
                 "stop.bat で止めてから、もう一度起動してください。"
                 "単体版の Start.vbs やショートカットは消しておいてください。")
+
+        # --- デスクトップ版(exe)が動いていないか(同じ手元のデータを使う) ---
+        if launch_guard.desktop_running():
+            log().warning("デスクトップ版が動いているので、ブラウザ版は起動しません")
+            raise StartupError(
+                "デスクトップ版のコイル梱包ツールが動いています",
+                "デスクトップ版(コイル梱包ツール.exe)と同じデータを使うので、同時には動かせません。"
+                "デスクトップ版の窓を使うか、窓を閉じてからもう一度起動してください。")
 
         # --- ポート選び ---
         port = launch_guard.pick_port(mode)
@@ -604,7 +620,58 @@ class _Report:
 READY_POLL_SEC = 0.2
 
 
-def _initialize(srv) -> None:
+def start_bridge(mode: str, *, token: str = "", server_factory) -> int:
+    """デスクトップ版の起動(`bridge.py` から)。**ポートを使わない。**
+
+    窓・多重起動の防止・終了の確認は外枠(Rust/Tauri)が持つ。ここでするのは
+    ブラウザ版と同じ「待機画面 → 本体を組み立てる → 3機能の重い初期化」だけで、
+    その中身(`_initialize`)は共有する ── 2本持つと片方だけ直すことになる。
+
+    **ブラウザ版と同時には動かさない**(同じ手元のDB・作業状態を使う)。ブラウザ版が
+    動いていれば断る。統合前の単体版も同じ。
+    """
+    import secrets
+
+    import launch_guard
+    import server as server_module
+
+    mode = resolve_mode(mode)
+    log_environment(mode)
+    with launch_guard.startup_gate(mode):
+        guard = launch_guard.check_existing(mode)
+        if not guard.should_start:
+            raise StartupError(
+                "ブラウザ版のコイル梱包ツールが動いています",
+                "ブラウザ版と同じデータを使うので、同時には動かせません。ブラウザの画面で"
+                "「終了」を押すか stop.bat で止めてから、もう一度開いてください。")
+        legacy = launch_guard.find_legacy_instances()
+        if legacy:
+            names = "、".join(x.describe() for x in legacy)
+            raise StartupError(
+                f"統合前の単体版が動いています: {names}",
+                "単体版の画面を閉じるか、単体版のフォルダの stop.bat で止めてから、"
+                "もう一度開いてください。")
+    srv = server_factory(mode, token or secrets.token_urlsafe(24))
+    thread = server_module.run_in_background(srv)
+    log().info("待機画面まで %.2f秒(デスクトップ版)", time.monotonic() - _BOOT_AT)
+    try:
+        try:
+            srv.build()
+        except Exception as exc:                  # noqa: BLE001 - 画面に出して継続
+            log().exception("アプリを組み立てられませんでした")
+            srv.boot.mark_error(f"アプリを組み立てられませんでした: {exc}")
+            _hold_until_stopped(srv, thread)
+            return 1
+        # 窓を閉じたら外枠が終わらせるので、心拍による自動終了は使わない
+        _initialize(srv, watch_idle=False)
+        _hold_until_stopped(srv, thread)
+        return 0
+    finally:
+        _close_modules()
+        log().info("終了しました: mode=%s(デスクトップ版)", mode)
+
+
+def _initialize(srv, *, watch_idle: bool = True) -> None:
     """3機能の重い初期化。サーバが立ってから行う。
 
     機能ごとに `initialize(report)` を呼ぶ。1つが失敗しても他は続ける
@@ -619,8 +686,9 @@ def _initialize(srv) -> None:
     # 3機能の画面と統合画面の外枠が、同じ見張りへ心拍を送る。
     # 処理中(資材計算の取り込み)は落とさない。スリープから戻ったら、
     # 梱包明細の画面の空きの猶予も数え直す
-    on_wake = getattr(app_module.all_modules()[0], "on_wake", None)
-    idle_exit.install(srv.stop, app_module.busy, on_wake=on_wake)
+    if watch_idle:
+        on_wake = getattr(app_module.all_modules()[0], "on_wake", None)
+        idle_exit.install(srv.stop, app_module.busy, on_wake=on_wake)
 
     run_initializers(srv, app_module.all_modules())
 

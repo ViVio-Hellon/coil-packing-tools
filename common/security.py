@@ -40,6 +40,10 @@ STATIC_MAX_AGE = 7 * 24 * 60 * 60
 
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 
+#: デスクトップ版(Tauri)の窓が画面を読む宛先。TCP を通らない(外枠の中で受ける名前)。
+#: Windows の WebView2 は `http://app.localhost/`、ほかの OS は `app://localhost/`
+BRIDGE_HOSTS = ("app.localhost",)
+
 TOKEN_HEADERS = ("X-Tool-Token", "X-App-Token")
 
 
@@ -47,7 +51,10 @@ def host_ok(req=None) -> bool:
     """`Host` がこのPCの自分自身か(DNSリバインディング対策)。"""
     req = req or request
     host = (req.host or "").split(":")[0]
-    return host in ALLOWED_HOSTS
+    allowed = ALLOWED_HOSTS
+    if current_app and current_app.config.get("BRIDGE"):
+        allowed = allowed + BRIDGE_HOSTS
+    return host in allowed
 
 
 def same_origin_ok(req=None) -> bool:

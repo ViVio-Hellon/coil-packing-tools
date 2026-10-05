@@ -135,7 +135,7 @@ class PageRoutes:
             # 入口と起動トークン(統合版)。外枠の body に載せ、app.js が読む
             "base": self.base, "token": getattr(self.cfg, "app_token", "") or "",
             "appName": self.cfg.app_name, "appId": self.cfg.app_id,
-            "version": self.cfg.version, "port": self.cfg.port,
+            "version": self.cfg.version, "port": self.cfg.port or "なし（デスクトップ版）",
             "build": getattr(self.cfg, "build", ""),
             "codeStamp": _code_stamp(),
             "materialSource": src or "none", "materialSourceLabel": label,
@@ -2120,7 +2120,7 @@ class PageRoutes:
             ("中身の指紋", _code_stamp(),
              "動いているファイルの中身から作った値。"
              "ファイルを差し替えるとここが変わる"),
-            ("ポート", str(c.port), ""),
+            ("ポート", str(c.port) if c.port else "なし（デスクトップ版）", ""),
             ("プロセスID", str(os.getpid()),
              "いま画面を出しているプロセス。多重起動の切り分けに使う"),
             ("起動時刻", self._started_at_text(), self._uptime_text()),

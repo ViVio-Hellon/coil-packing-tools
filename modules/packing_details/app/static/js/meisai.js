@@ -686,7 +686,7 @@ async function openAbout() {
     $("abVer").textContent = `VER ${health.version}`;
     $("abRoot").textContent = health.app_root || "—";
     $("abAppId").textContent = health.app_id || "—";
-    $("abPort").textContent = `${health.port} / ${health.pid}`;
+    $("abPort").textContent = `${health.port || "なし（デスクトップ版）"} / ${health.pid}`;
     $("abUptime").textContent = since(health.uptime_sec);
     $("abPython").textContent = health.python
       ? `${health.python}　${health.python_exe || ""}`.trim() : "—";

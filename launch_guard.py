@@ -148,6 +148,31 @@ def _unlock(handle) -> None:
             pass
 
 
+#: デスクトップ版(exe)が動いているあいだ握っている錠(`src-tauri/src/main.rs` の
+#: `take_instance_lock`)。ローカル領域の runtime の下
+DESKTOP_LOCK_NAME = "desktop.lock"
+
+
+def desktop_running() -> bool:
+    """デスクトップ版(コイル梱包ツール.exe)が動いているか。
+
+    exe は動いているあいだ `runtime/desktop.lock` を OS のロックで握っている
+    (落ちれば OS が外すので、残った印に惑わされない)。締められたら動いていない。
+    **ブラウザ版とデスクトップ版は同時に動かさない**(同じ手元のDB・作業状態を使う)。
+    """
+    path = app_config.local_dir("runtime") / DESKTOP_LOCK_NAME
+    if not path.exists():
+        return False
+    try:
+        with open(path, "a+b") as handle:
+            if _try_lock(handle):
+                _unlock(handle)
+                return False
+            return True
+    except OSError:
+        return False
+
+
 @contextmanager
 def startup_gate(mode: str, *, wait_sec: float = GATE_WAIT_SEC):
     """起動の4段を1つずつしか通さない。

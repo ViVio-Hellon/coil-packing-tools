@@ -88,7 +88,8 @@ function renderAbout(a) {
   // その事実まで出す(「8733 のはずが開かない」の答えになる)
   const port = a.actual_port || a.port;
   text($('#a-port'),
-       (a.port && port !== a.port) ? `${port} (設定は ${a.port})` : String(port));
+       !port ? 'なし（デスクトップ版）'
+             : (a.port && port !== a.port) ? `${port} (設定は ${a.port})` : String(port));
 
   text($('#a-python'), a.python);
   text($('#a-pyexe'), a.python_exe);

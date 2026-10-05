@@ -131,6 +131,7 @@ def create_app(mode: str = modes.MAIN, *, token: Optional[str] = None,
     _install_tab_alive(app, [m["prefix"] for m in loaded])
     _install_error_report(app, [m["prefix"] for m in loaded])
     _install_theme(app)
+    _install_desktop(app)
     _install_boot_redirect(app, loaded)
     _install_shutdown_guard(app, loaded)
 
@@ -255,6 +256,41 @@ def _install_theme(app: Flask) -> None:
             themed = themed + tag if at < 0 else themed[:at] + tag + themed[at:]
         if themed is not html:
             response.set_data(themed)
+        return response
+
+
+# ------------------------------------------------------------------
+# デスクトップ版(Tauri)── 窓まわりを外枠に頼む(`static/js/desktop.js`)
+# ------------------------------------------------------------------
+DESKTOP_MARK = "js/desktop.js"
+
+
+def _install_desktop(app: Flask) -> None:
+    """**デスクトップ版のときだけ**、どの画面(HTML)にも `desktop.js` を差し込む。
+
+    外枠の窓はタブを持たないので、別のタブで開く帳票・印刷ビュー・説明書と、
+    アプリの外(包装仕様書の閲覧システム)を外枠に開いてもらう。各機能のコードは触らない
+    (`tab_alive.js` と同じ差し込み)。ブラウザ版(`BRIDGE` が無い)では何もしない。
+    """
+    @app.after_request
+    def _desktop(response):                     # noqa: ANN202 - Flaskのフック
+        if not current_app.config.get("BRIDGE"):
+            return response
+        if (request.method != "GET" or response.status_code != 200
+                or response.mimetype != "text/html"
+                or response.direct_passthrough or not response.is_sequence):
+            return response
+        if request.args.get("pane") == "1":
+            return response
+        html = response.get_data(as_text=True)
+        if DESKTOP_MARK in html or not _HTML_TAG.search(html):
+            return response
+        # **先頭(`<head>` の直後)に置く。** 画面のスクリプトが `window.open` を
+        # 呼ぶより先に差し替えておく
+        tag = '<script src="%s"></script>' % url_for("static", filename=DESKTOP_MARK)
+        at = html.lower().find("<head>")
+        html = (html[:at + 6] + tag + html[at + 6:]) if at >= 0 else tag + html
+        response.set_data(html)
         return response
 
 
