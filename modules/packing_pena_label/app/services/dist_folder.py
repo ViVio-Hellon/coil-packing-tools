@@ -73,7 +73,19 @@ INCLUDE: Tuple[str, ...] = (
     "Start.vbs", "start.bat", "stop.bat",
     "start_app.py", "run.py", "app.py", "server.py", "boot_server.py",
     "launch_guard.py", "process_manager.py",
+    # デスクトップ版の入口(exe が子として起動する。統合 1.1.0)
+    "bridge.py",
     "common", "modules", "config", "templates", "static", "docs", "scripts",
+)
+
+#: デスクトップ版の exe。GitHub Actions(Windows)が作る ``CoilPackingTools.exe`` を、
+#: 配るときはこの名前でフォルダの直下に置く(押す物が分かる名前にする)。
+#: 外枠のソース(``src-tauri``)と作る仕組み(``.github``)は配らない
+EXE_NAME = "コイル梱包ツール.exe"
+#: exe を探す場所(先に見つかったもの)。``exe=`` で指定もできる
+EXE_CANDIDATES: Tuple[str, ...] = (
+    "CoilPackingTools.exe",
+    "src-tauri/target/release/CoilPackingTools.exe",
 )
 
 #: あれば配るもの（無くても作れる）
@@ -98,7 +110,8 @@ EXCLUDE_NAMES: Tuple[str, ...] = (
 SETTINGS = _dist_settings.ROOT_NAME
 
 #: できたフォルダに **入っていてはいけない** もの（最後に確かめる）
-FORBIDDEN: Tuple[str, ...] = ("tests", "tools", ".git", "config/local.json")
+FORBIDDEN: Tuple[str, ...] = ("tests", "tools", ".git", "config/local.json",
+                               "src-tauri", ".github")
 
 MEMO_NAME = "配布メモ.txt"
 
@@ -198,11 +211,26 @@ def _settings_sources(src_root: Path, root: Optional[Path]) -> list:
     return found
 
 
+def find_exe(src_root: Optional[Path] = None) -> Optional[Path]:
+    """デスクトップ版の exe(``EXE_CANDIDATES`` の先に見つかったもの)。無ければ None。"""
+    base = Path(src_root or ROOT)
+    for name in EXE_CANDIDATES:
+        path = base / name
+        if path.is_file():
+            return path
+    return None
+
+
 def build(out: Optional[Path] = None, *, with_settings: bool = True,
           force: bool = False, make_zip: bool = False,
-          root: Optional[Path] = None) -> BuildResult:
-    """配布用フォルダを作る。断るときは ``BuildRefused``（理由の文つき）。"""
+          root: Optional[Path] = None, exe: Optional[Path] = None) -> BuildResult:
+    """配布用フォルダを作る。断るときは ``BuildRefused``（理由の文つき）。
+
+    ``exe`` はデスクトップ版の exe(省けば ``find_exe``)。無くてもブラウザ版で動く。
+    """
     src_root = (root or ROOT).resolve()
+    if exe is not None and not Path(exe).is_file():
+        raise BuildRefused("指定された exe がありません: %s" % exe)
     out = Path(out) if out else default_out()
     if not out.is_absolute():
         raise BuildRefused("作る場所はフルパスで指定してください: %s" % out)
@@ -249,6 +277,17 @@ def build(out: Optional[Path] = None, *, with_settings: bool = True,
         else:
             lines.append("同梱の Python（runtime フォルダ）はありません。"
                          "配った先に Python が要ります。")
+
+        # デスクトップ版の exe(あれば)。無くてもブラウザ版(Start.vbs)で動く
+        exe = Path(exe) if exe is not None else find_exe(src_root)
+        if exe is not None:
+            shutil.copy2(str(exe), str(out / EXE_NAME))
+            lines.append("デスクトップ版を入れました: %s（元: %s）" % (EXE_NAME, exe))
+        else:
+            lines.append("デスクトップ版（exe）は入っていません。GitHub Actions の"
+                         "「デスクトップ版(Windows)」で作った CoilPackingTools.exe を、"
+                         "アプリのフォルダの直下に置いてから作り直してください"
+                         "（無くてもブラウザ版の Start.vbs で動きます）。")
 
         # 配布設定: 入れる/入れないをはっきり決める。**3機能ぶん（と共通）まとめて**。
         # 配った先では各機能が 配布設定\<機能>\ を読むので、入れる先は決まった名前。
@@ -320,17 +359,21 @@ def _memo(lines: List[str]) -> str:
         "配った先ですること",
         "  1. このフォルダを好きな場所に置く（以前の版のフォルダに上書きしない）",
         "  2. runtime フォルダが無い場合は、Python が入っているか確かめる",
-        "  3. Start.vbs で起動する。配布設定があれば、このとき読み込みます",
+        "  3. %s で起動する（デスクトップ版。ポートを使いません）。" % EXE_NAME,
+        "     exe が無いとき・動かないときは Start.vbs（ブラウザ版）で起動できます。",
+        "     配布設定があれば、起動したときに読み込みます",
         "     （その端末ですでに入れてある設定は上書きしません）",
+        "     デスクトップ版とブラウザ版は同時には動きません（片方を終えてから）",
         "",
         "以前の版から入れ替えるとき",
-        "  1. 古い版を止める（stop.bat）",
-        "  2. 新しいフォルダの Start.vbs で起動する",
+        "  1. 古い版を止める（デスクトップ版は「終了」、ブラウザ版は stop.bat）",
+        "  2. 新しいフォルダの %s（または Start.vbs）で起動する" % EXE_NAME,
         "     端末ごとの設定・作業状態は %LOCALAPPDATA% の下（PackingDetails・",
         "     PackingPenaLabel・CoilMaterialTool。統合アプリのログは CoilPackingTools）にあるので、",
         "     古いフォルダから写すものはありません。そのまま前の続きから使えます",
         "  3. 古いフォルダは、新しい版で動くのを確かめてから消す",
         "",
-        "入れていないもの: tests・tools・.git・*.sqlite3（マスタの写しなど）・ログ・起動中の印",
+        "入れていないもの: tests・tools・.git・src-tauri（exe のソース）・"
+        "*.sqlite3（マスタの写しなど）・ログ・起動中の印",
         "",
     ])

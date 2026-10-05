@@ -58,6 +58,11 @@ def fake_app(base: Path) -> Path:
     (src / "runtime" / "instance.json").write_text("{}", encoding="utf-8")
     (src / "logs").mkdir()
     (src / "logs" / "app.log").write_text("x", encoding="utf-8")
+    # デスクトップ版の外枠のソースと、それを作る仕組み(配らない。統合 1.1.0)
+    (src / "src-tauri" / "src").mkdir(parents=True)
+    (src / "src-tauri" / "src" / "main.rs").write_text("fn main() {}", encoding="utf-8")
+    (src / ".github" / "workflows").mkdir(parents=True)
+    (src / ".github" / "workflows" / "desktop-windows.yml").write_text("x", encoding="utf-8")
     return src
 
 
@@ -250,6 +255,38 @@ class DistFolderTest(unittest.TestCase):
         with self.assertRaises(DF.BuildRefused):
             self.build()
         self.assertFalse(self.out.exists(), "半端なフォルダを残した")
+
+    def test_desktop_exe_goes_in_under_its_own_name(self):
+        """GitHub Actions が作った exe を直下に置けば「コイル梱包ツール.exe」で入る。"""
+        (self.src / "src-tauri" / "target" / "release").mkdir(parents=True)
+        built = self.src / "src-tauri" / "target" / "release" / "CoilPackingTools.exe"
+        built.write_bytes(b"MZ-desktop")
+        r = self.build()
+        self.assertEqual((self.out / DF.EXE_NAME).read_bytes(), b"MZ-desktop")
+        self.assertTrue((self.out / "bridge.py").is_file(), "exe が起動する入口")
+        self.assertFalse((self.out / "src-tauri").exists(), "外枠のソースは配らない")
+        self.assertFalse((self.out / ".github").exists())
+        self.assertTrue(any(DF.EXE_NAME in line for line in r.lines))
+        memo = (self.out / DF.MEMO_NAME).read_text(encoding="utf-8-sig")
+        self.assertIn(DF.EXE_NAME, memo)
+        self.assertIn("Start.vbs", memo, "exe が動かないときの代わりも書く")
+
+    def test_exe_next_to_the_app_wins_and_can_be_named(self):
+        (self.src / "CoilPackingTools.exe").write_bytes(b"MZ-root")
+        self.build()
+        self.assertEqual((self.out / DF.EXE_NAME).read_bytes(), b"MZ-root")
+        other = self.base / "受け取り.exe"
+        other.write_bytes(b"MZ-given")
+        self.build(exe=other, force=True)
+        self.assertEqual((self.out / DF.EXE_NAME).read_bytes(), b"MZ-given")
+        with self.assertRaises(DF.BuildRefused):
+            self.build(exe=self.base / "無い.exe", force=True)
+
+    def test_without_exe_it_still_builds_and_says_so(self):
+        r = self.build()
+        self.assertFalse((self.out / DF.EXE_NAME).exists())
+        self.assertTrue(any("CoilPackingTools.exe" in line and "Start.vbs" in line
+                            for line in r.lines), r.lines)
 
     def test_zip(self):
         r = self.build(make_zip=True)

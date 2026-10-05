@@ -20,14 +20,12 @@ mod bridge;
 mod pages;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
 use tauri::http::{Request, Response};
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
 use bridge::{Bridge, Phase};
@@ -323,41 +321,53 @@ fn open_external(app: AppHandle, url: String) -> Result<(), String> {
 // ------------------------------------------------------------------
 // 終わり方
 // ------------------------------------------------------------------
-/// いちばん大きい窓の × を押した。**画面の「終了」と同じ確認を通る**
-/// (保存していない配置図・実行中の取り込みがあれば訊く)。
-fn confirm_close(app: AppHandle, bridge: Arc<Bridge>) {
-    thread::spawn(move || {
-        let json = vec![("Content-Type".to_string(), "application/json".to_string())];
-        let ask = bridge.call("POST", "/api/shutdown", "", json.clone(), b"{}");
-        match ask {
-            Ok(reply) if reply.status == 409 => {
-                let message = serde_json::from_slice::<serde_json::Value>(&reply.body)
-                    .ok()
-                    .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_string))
-                    .unwrap_or_else(|| "実行中の処理があります。終了しますか?".into());
-                let yes = app
-                    .dialog()
-                    .message(message)
-                    .title(TITLE)
-                    .kind(MessageDialogKind::Warning)
-                    .buttons(MessageDialogButtons::OkCancelCustom("終了する".into(), "やめる".into()))
-                    .blocking_show();
-                if yes {
-                    let _ = bridge.call("POST", "/api/shutdown", "", json, br#"{"force": true}"#);
-                    exit_soon(app);
-                }
-            }
-            // 200: Python が「終わってよい」を知らせてくる。来なくても少し待って終える
-            // それ以外(Python が居ない等): そのまま終える
-            _ => exit_soon(app),
-        }
-    });
+/// 窓の × を押したあと、画面が受け取ったか(`close_ack`)
+static CLOSE_PENDING: AtomicBool = AtomicBool::new(false);
+
+/// 画面が × を受け取った(統合画面の「終了」の確かめに進んだ)
+#[tauri::command]
+fn close_ack() {
+    CLOSE_PENDING.store(false, Ordering::SeqCst);
 }
 
-fn exit_soon(app: AppHandle) {
+/// 画面から「そのまま終えてよい」(統合画面がまだ無い: 起動中・起動できない画面)
+#[tauri::command]
+fn exit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+/// いちばん大きい窓の × を押した。**統合画面の「終了」と同じ流れを通す**
+/// (「終了します。よろしいですか」→ 取り込み中なら理由を出して終わらない)。
+///
+/// 【ダイアログの部品(tauri-plugin-dialog)は使わない】
+/// その部品は画面の `window.confirm` を**待たない版**に置き換える(返すのが Promise)。
+/// 画面の `if (!confirm(...)) return;` が「いいえ」を押しても進んでしまう
+/// (試作の窓の通し試験で見つけた)。確かめは画面のもの(WebView の本物の confirm)を使う。
+///
+/// 画面が固まっていて受け取れないとき(3秒たっても `close_ack` が来ない)は、そのまま終える。
+fn request_close(window: &tauri::Window) {
+    CLOSE_PENDING.store(true, Ordering::SeqCst);
+    let script = r#"(function () {
+      try {
+        var core = window.__TAURI__ && window.__TAURI__.core;
+        var quit = document.getElementById("quit");
+        if (quit) {
+          core.invoke("close_ack");
+          if (!quit.disabled) quit.click();
+        } else {
+          core.invoke("exit_app");
+        }
+      } catch (e) { /* 受け取れなければ外枠がそのまま終える */ }
+    })();"#;
+    if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+        let _ = webview.eval(script);
+    }
+    let app = window.app_handle().clone();
     thread::spawn(move || {
-        thread::sleep(Duration::from_millis(1500));
-        app.exit(0);
+        thread::sleep(Duration::from_secs(3));
+        if CLOSE_PENDING.load(Ordering::SeqCst) {
+            app.exit(0);
+        }
     });
 }
 
@@ -366,7 +376,6 @@ fn main() {
     let bridge = Bridge::new(root, bridge::new_token());
 
     let for_protocol = bridge.clone();
-    let for_close = bridge.clone();
     let for_setup = bridge.clone();
     let for_exit = bridge.clone();
 
@@ -379,19 +388,18 @@ fn main() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .register_asynchronous_uri_scheme_protocol(SCHEME, move |_ctx, request, responder| {
             let bridge = for_protocol.clone();
             // 要求ごとに別のスレッドで答える(画面は見張り・心拍・操作を同時に出す)
             thread::spawn(move || responder.respond(handle(&bridge, request)));
         })
-        .invoke_handler(tauri::generate_handler![open_window, close_window, open_external])
+        .invoke_handler(tauri::generate_handler![open_window, close_window, open_external, close_ack, exit_app])
         .on_window_event(move |window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
-                    confirm_close(window.app_handle().clone(), for_close.clone());
+                    request_close(window);
                 }
             }
         })
