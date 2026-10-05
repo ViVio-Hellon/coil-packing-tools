@@ -210,7 +210,8 @@ class DistFolderTest(unittest.TestCase):
                    PENA: "PACKING_PENA_DISTRIBUTION_DIR",
                    "packing_material_calculation": "COIL_TOOL_DISTRIBUTION_DIR"}[key]
             module = importlib.import_module(modname)
-            src = open(module.__file__, encoding="utf-8").read()
+            with open(module.__file__, encoding="utf-8") as f:
+                src = f.read()
             self.assertIn(env, src, key)
             self.assertIn('default_dir("%s")' % key, src, key)
             self.assertEqual(dist_settings.default_dir(key),

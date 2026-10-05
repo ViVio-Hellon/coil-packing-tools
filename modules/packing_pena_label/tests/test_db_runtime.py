@@ -24,6 +24,12 @@ def sqlite_conn_count() -> int:
     return sum(1 for o in gc.get_objects() if isinstance(o, sqlite3.Connection))
 
 
+
+def _read_bytes(path):
+    """中身を読んで、すぐ閉じる(Windows では開いたままのファイルは消せない)。"""
+    with open(path, "rb") as f:
+        return f.read()
+
 class StoreTestBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -205,10 +211,10 @@ class TestSharedMasterIsReadOnly(unittest.TestCase):
     def test_file_is_not_modified(self):
         """読んでも中身も更新時刻も変わらない。"""
         before = (os.stat(self.db).st_mtime_ns, os.stat(self.db).st_size,
-                  open(self.db, "rb").read())
+                  _read_bytes(self.db))
         self._repo().load()
         after = (os.stat(self.db).st_mtime_ns, os.stat(self.db).st_size,
-                 open(self.db, "rb").read())
+                 _read_bytes(self.db))
         self.assertEqual(before, after, "マスタが書き換わっている")
 
     def test_works_when_the_file_is_read_only(self):

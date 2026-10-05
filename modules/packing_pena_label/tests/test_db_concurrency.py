@@ -253,11 +253,15 @@ class MasterTypesAndFreshnessTest(unittest.TestCase):
         make_master(self.db, mass="0.5")
         repo = self._repo(refresh_sec=2)
         self.assertEqual(repo.load().unit_of("テスラピン")[0], "0.5")
-        time.sleep(1.1)
+        time.sleep(1.1)                       # mtime を動かす
         make_master(self.db, mass="1.7")
+        # 間隔の中・過ぎたは、読んだ時刻を動かして作る。実時間で測ると、Windows では
+        # マスタを作り直すだけで1秒近くかかり、間隔の中のつもりが過ぎていた
+        # (GitHub Actions の Windows で落ちた)
+        repo._cache_at = time.monotonic()     # 読んだばかり
         self.assertEqual(repo.load().unit_of("テスラピン")[0], "0.5",
                          "鮮度チェック間隔の中は古いままでよい")
-        time.sleep(2.2)
+        repo._cache_at -= 2.1                 # 間隔(2秒)を過ぎた
         self.assertEqual(repo.load().unit_of("テスラピン")[0], "1.7",
                          "間隔を過ぎても追いつかない")
 
