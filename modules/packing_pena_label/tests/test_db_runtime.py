@@ -24,11 +24,11 @@ def sqlite_conn_count() -> int:
     return sum(1 for o in gc.get_objects() if isinstance(o, sqlite3.Connection))
 
 
-
 def _read_bytes(path):
     """中身を読んで、すぐ閉じる(Windows では開いたままのファイルは消せない)。"""
     with open(path, "rb") as f:
         return f.read()
+
 
 class StoreTestBase(unittest.TestCase):
     def setUp(self):
