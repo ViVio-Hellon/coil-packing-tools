@@ -9,6 +9,10 @@
 | ペナラベル | テスラ向け出荷ラベルの発行と風袋計算 | `ViVio-Hellon/packing-pena-label-python-web` | v1.5.0 |
 | 資材計算 | パレット・リプラ・緩衝材の員数、チェックリスト、発注票 | `ViVio-Hellon/packing-material-calculation-python-web` | VER 0.2.0 |
 
+**統合 1.1.0 から、専用の窓で動くデスクトップ版(`コイル梱包ツール.exe`。ポートを使わない)が
+加わりました。** ブラウザ版(`Start.vbs`)も予備として残してあります(同時には動きません)。
+作りは [`docs/デスクトップ版.md`](docs/デスクトップ版.md)。
+
 **統合とは、機能を1つにまとめることではありません。** 3機能の計算・入力チェック・
 DB処理・帳票は移植元のまま、それぞれ独立して動きます。変えたのは「入れ物」
 (起動・停止・待ち受け・画面の外枠・ログ)だけです。何をどう決めたかは
@@ -19,7 +23,8 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 
 | ファイル | 用途 |
 |---|---|
-| `Start.vbs` | **ふだんはこれをダブルクリック。** コンソールを出さずに起動し、ブラウザに統合画面が開きます |
+| `コイル梱包ツール.exe` | **デスクトップ版(1.1.0〜)。** 専用の窓で統合画面が開きます。ポートを使いません。窓の × か「終了」で終わります(どちらも確かめが出ます)。配布用フォルダに入ります(リポジトリでは GitHub Actions が作る `CoilPackingTools.exe`) |
+| `Start.vbs` | **ブラウザ版。** コンソールを出さずに起動し、ブラウザに統合画面が開きます。exe が無いとき・動かないときの予備 |
 | `start.bat` | 起動しないときの診断用。コンソールに理由が出ます(`start.bat --check` は環境の確認だけ、`start.bat --diagnostic` は細かいログまで残す) |
 | `stop.bat` | 明示的に止めるとき(3機能とも終わります)。資材計算の取り込み中は止めずに知らせます。中断してよければ `stop.bat --force` |
 | `run.py` | `python run.py` で起動(`start_app.py` と同じ入口) |
@@ -30,11 +35,15 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
   操作のたびに保存しているので、開き直せば同じところから続けられます
 - 画面右上の「終了」で止めることもできます(3機能とも終わります)
 - 2回起動しても2つ目は上がらず、開いている画面へ合流します
-- ポートは **8740**(使えなければ 8741〜8743)。`config/app.json` で変えられます
+- ポートは **8740**(使えなければ 8741〜8743)。`config/app.json` で変えられます(ブラウザ版だけ)
+- デスクトップ版とブラウザ版は同じ手元のDB・作業状態を使うので、**同時には動きません**。
+  片方が動いていると、もう片方は理由を出して起動しません
 
 ## 必要環境
 
-- Python 3.9 以上、`pip install -r requirements.txt`(Flask と waitress の2つだけ)
+- Python 3.9 以上、`pip install -r requirements.txt`(Flask と waitress の2つだけ。
+  デスクトップ版は Flask だけを使う。exe に Python は入っていないので、PCに入っている Python を使う)
+- デスクトップ版は Windows 11(WebView2 が入っている)
 - ラインPCには追加ライブラリを入れられない前提のまま。取り込み元の読み書きは標準ライブラリ
   (`sqlite3`)。ペナラベルの Access(.accdb)は `cscript.exe` + VBScript + ADODB + ACE 経由
   (`modules/packing_pena_label/app/repositories/vbs/`)
@@ -43,14 +52,14 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.0.16 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] ログ 接続OK [終了]
+上の帯   コイル梱包ツール VER1.1.0 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] ログ 接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
 - タブを切り替えても、入力の途中の値・条番号の盤面・計算結果はそのまま残ります
 - 各機能の画面は移植元と同じです(見た目・操作・設定画面・マスタ管理・印刷)。
   URL に機能の入口が付きます: `/details/…` `/pena/…` `/material/…`
-- 帳票・印刷ビューは今までどおり別のタブで開きます
+- 帳票・印刷ビューは今までどおり別のタブで開きます(デスクトップ版では別の窓)
 - 各機能の「画面は1枚だけ」の決まりは機能ごとです。統合画面を2枚開くと、3つの
   機能がそれぞれ「別の画面で開いています」になります。「この画面で使う」はタブごとに押します
 
@@ -60,7 +69,10 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 Start.vbs / start.bat / stop.bat   利用者の入口(CP932・CRLF)
 start_app.py / run.py               Python側の起動開始点(どちらも同じ)
 app.py                              統合 Flask アプリの組み立て(タブ・3機能の登録)
-launch_guard.py                     多重起動の判定・起動の順番待ち
+launch_guard.py                     多重起動の判定・起動の順番待ち・デスクトップ版とのすみ分け
+bridge.py                           デスクトップ版の入口(exe の子。標準入出力で Flask を呼ぶ。待ち受けない)
+src-tauri/                          デスクトップ版の外枠(Rust / Tauri)。配らない(作った exe だけを配る)
+.github/workflows/desktop-windows.yml   Windows で試験して exe を作る(GitHub Actions)
 boot_server.py / server.py          起動待機画面 → 本体への引き継ぎ(waitress)
 process_manager.py                  安全な停止
 config/app.json                     統合アプリのID・表示名・版・ポート
@@ -72,6 +84,7 @@ common/                             3機能で共有する入れ物
   sqlite_toolkit.py  boot_screen.py 梱包明細・資材計算で同一だったもの
 templates/base.html  index.html     統合画面の外枠とタブ
 static/css/shell.css  js/shell.js   外枠だけの CSS / JS(心拍・タブ・終了)
+static/js/desktop.js                デスクトップ版だけで差し込む(別窓・アプリの外のリンク・窓を閉じる)
 modules/
   packing_details/                  梱包明細   (meisai/ + app/ + config/ + docs/ + tests/)
   packing_pena_label/               ペナラベル (app/ + server.py〈Flask への取り次ぎ〉+ data/ + assets/ + tests/)
@@ -79,8 +92,11 @@ modules/
 tests/                              統合の試験(タブ・入口・トークン・心拍・停止・起動ファイル)
 tools/smoke_shell.py                起動から停止までの通し(手動)
 tools/e2e_scenarios.py              3機能を現場と同じように使う通し(一連の流れ・交互・放置。手動)
-scripts/make_dist.py                配布用フォルダを作る
+tools/desktop_e2e.py                デスクトップ版の窓を操作する通し(開発機の Linux。手動)
+scripts/make_dist.py                配布用フォルダを作る(デスクトップ版の exe も入れる)
+scripts/desktop_smoke.py            exe を起動して、画面が届く・待ち受けない・止めたら Python も終わるを確かめる
 docs/統合設計.md                    調査・比較・採用した実装・影響・テスト
+docs/デスクトップ版.md              デスクトップ版の作り・動きの約束・作り方・確かめたこと
 ```
 
 ## 手元のファイルの置き場所
@@ -143,10 +159,10 @@ docs/統合設計.md                    調査・比較・採用した実装・�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.0.16 | `config/app.json` |
-| 梱包明細 | 0.13.11 | `modules/packing_details/config/app.json` |
-| ペナラベル | 1.5.12 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
-| 資材計算 | 0.2.11 | `modules/packing_material_calculation/config/app.json` |
+| コイル梱包ツール(統合ツール) | 1.1.0 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
+| 梱包明細 | 0.13.12 | `modules/packing_details/config/app.json` |
+| ペナラベル | 1.5.13 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| 資材計算 | 0.2.12 | `modules/packing_material_calculation/config/app.json` |
 
 機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
 だけを変えたら、統合ツールの版だけを上げます。決まりの全体は `docs/変更履歴.md`。
@@ -185,14 +201,19 @@ python tools/print_edge_check.py
 ## テスト
 
 ```
-python -m unittest discover -s modules/packing_details/tests -t .        # 梱包明細   463
-python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 586
-python -m pytest modules/packing_material_calculation/tests              # 資材計算   432
-python -m pytest tests                                                   # 統合       174
+python -m unittest discover -s modules/packing_details/tests -t .        # 梱包明細   488
+python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 605
+python -m pytest modules/packing_material_calculation/tests              # 資材計算   442
+python -m pytest tests                                                   # 統合       276
 python tools/smoke_shell.py                                              # 通し(配布前に一度)
 python tools/e2e_scenarios.py                                           # 3機能の一連の流れ・印刷する・交互・保存先・マスタ管理・後追い・配色・放置(約20分。--quick で約9分)
 python tools/print_edge_check.py                                         # 印刷の端 5mm(紙面を直したら)
+cd src-tauri && cargo test                                               # デスクトップ版の外枠(Rust)
+python tools/desktop_e2e.py --exe src-tauri/target/debug/CoilPackingTools   # デスクトップ版の窓の通し(Linux)
 ```
+
+Windows では GitHub Actions の「デスクトップ版(Windows)」が、上の Python の試験4つ・Rust の試験・
+exe の作成・exe を起動しての確認(`scripts/desktop_smoke.py`)を push のたびに流します。
 
 3機能の試験は移植元のものを(import パスだけ直して)そのまま流しています。
 そのうち画面・API を叩く試験は、統合の試験(`tests/test_modules_mounted.py`)が
@@ -203,7 +224,9 @@ python tools/print_edge_check.py                                         # 印�
 
 `python scripts\make_dist.py`(またはペナラベルの設定画面の「配布用フォルダを作る」)で、
 配るものだけを新しいフォルダへ写します(tests・tools・手元DBの写し・ログは入りません)。
-配った先では `Start.vbs` を押すだけです。各機能の配布設定(`配布設定\<機能>\`)は
+配った先では `コイル梱包ツール.exe`(無いとき・動かないときは `Start.vbs`)を押すだけです。
+デスクトップ版の exe は、GitHub Actions の成果物 `CoilPackingTools-windows` の `CoilPackingTools.exe` を
+アプリのフォルダの直下に置いてから作ると、`コイル梱包ツール.exe` の名前で入ります(`--exe` で場所を指定もできる)。各機能の配布設定(`配布設定\<機能>\`)は
 そのフォルダごと配れば、配った先が起動時に読み込みます。配布用フォルダを作るときは、
 書き出してある3機能ぶんの配布設定(と共通のログの配布設定)をまとめて入れます。`--no-settings`(画面では
 「配布設定を入れない」)を選ぶと、どの機能の配布設定も入れません。

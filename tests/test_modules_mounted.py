@@ -37,7 +37,7 @@ WEB_TESTS = {
 
 def _run(key: str) -> subprocess.CompletedProcess:
     folder, files = WEB_TESTS[key]
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8")
     # 根の試験の隔離(tests/_env.py)を持ち込まない。機能の試験は自分で隔離する
     for name in list(env):
         if name.startswith(("PACKING_DETAILS_", "COIL_TOOL_", "PACKING_PENA_", "PPL_",
@@ -45,8 +45,9 @@ def _run(key: str) -> subprocess.CompletedProcess:
             env.pop(name)
     cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
            "-p", "tools.pytest_mounted", *[f"{folder}/{f}" for f in files]]
-    return subprocess.run(cmd, cwd=str(ROOT), env=env, capture_output=True, text=True,
-                          timeout=900)
+    # 子の出力は UTF-8 で読む(Windows の既定 cp1252/cp932 では日本語で読み手が落ちる)
+    return subprocess.run(cmd, cwd=str(ROOT), env=env, capture_output=True,
+                          encoding="utf-8", errors="replace", timeout=900)
 
 
 class MountedWebTestsTest(unittest.TestCase):

@@ -353,18 +353,30 @@ def migrate_local() -> list[str]:
 
     if LEGACY_DB_PATH.exists() and not DB_PATH.exists():
         import sqlite3
+        src = dst = None
         try:
             src = sqlite3.connect(str(LEGACY_DB_PATH))
             dst = sqlite3.connect(str(DB_PATH))
             with dst:
                 src.backup(dst)
-            src.close()
-            dst.close()
             done.append(f"作業用DB: {LEGACY_DB_PATH} → {DB_PATH}")
         except sqlite3.Error as exc:
             log.warning("作業用DBを写せませんでした: %s", exc)
-            # 中途半端な写しを残さない ── 次の起動でやり直せるように
-            DB_PATH.unlink(missing_ok=True)
+            # 中途半端な写しを残さない ── 次の起動でやり直せるように。
+            # **先に閉じる。** Windows は開いたままのファイルを消せず、
+            # 消す失敗(PermissionError)で起動ごと止まっていた
+            for con in (src, dst):
+                if con is not None:
+                    con.close()
+            src = dst = None
+            try:
+                DB_PATH.unlink(missing_ok=True)
+            except OSError as gone:
+                log.warning("中途半端な写しを消せませんでした: %s", gone)
+        finally:
+            for con in (src, dst):
+                if con is not None:
+                    con.close()
 
     for line in done:
         log.info("利用者ごとの領域へ写しました ── %s", line)

@@ -296,8 +296,8 @@ class DistFolderTest(unittest.TestCase):
         """scripts/make_dist.py（make_dist.bat の中身）がそのまま動くこと。"""
         out = self.base / "by_script"
         p = subprocess.run([sys.executable, str(self.src / "scripts" / "make_dist.py"),
-                            "--out", str(out)], capture_output=True, text=True,
-                           timeout=120)
+                            "--out", str(out)], capture_output=True, timeout=120,
+                           encoding="utf-8", errors="replace", env=dict(os.environ, PYTHONIOENCODING="utf-8"))
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertTrue((out / DF.MEMO_NAME).exists())
 

@@ -92,7 +92,7 @@ class StoreConcurrencyTest(unittest.TestCase):
             c.commit(); c.close()
         """) % self.db
         p = subprocess.Popen([sys.executable, "-c", code],
-                             stdout=subprocess.PIPE, text=True)
+                             stdout=subprocess.PIPE, encoding="utf-8", errors="replace")
         try:
             self.assertEqual(p.stdout.readline().strip(), "locked")
             st.set_kv("mine", {"v": 1})          # 待たされるが成功すること

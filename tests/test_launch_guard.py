@@ -96,7 +96,7 @@ def _run_worker(hold: float, env: dict) -> subprocess.Popen:
     code = _WORKER.format(root=str(ROOT), hold=hold)
     return subprocess.Popen([sys.executable, "-c", code],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, env=env)
+                            encoding="utf-8", errors="replace", env=dict(env, PYTHONIOENCODING="utf-8"))
 
 
 def test_別プロセスでも1つずつしか通らない(local):

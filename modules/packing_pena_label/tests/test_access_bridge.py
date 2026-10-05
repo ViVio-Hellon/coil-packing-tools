@@ -26,7 +26,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _fake_cscript(path: str, payload: str, rc: int = 0) -> str:
-    """cscript.exe の代わりに使う実行ファイル（テスト用）。"""
+    """cscript.exe の代わりに使う実行ファイル（テスト用）。
+
+    Windows では .cmd(シェルの台本は起動できない)。応答は本物の VBScript と同じく
+    ASCII へ escape したものを返す(``_run`` は Windows では cp932 で読む)。
+    中身は ASCII だけにする(cmd.exe は .cmd を端末のコードページで読む)。
+    """
+    if os.name == "nt":
+        path += ".cmd"
+        with io.open(path + ".json", "w", encoding="ascii") as f:   # 応答(X.cmd.json)
+            f.write(payload)
+        with io.open(path, "w", encoding="ascii", newline="\r\n") as f:
+            f.write('@echo off\ntype "%%~f0.json"\nexit /b %d\n' % rc)
+        return path
     with io.open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write("#!/bin/sh\ncat <<'JSON'\n%s\nJSON\nexit %d\n" % (payload, rc))
     os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
@@ -52,12 +64,12 @@ class AccessBitnessFallbackTest(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _ok_payload(self):
+        # 本物の VBScript と同じく ASCII へ escape して返す
         return json.dumps({"ok": True, "fields": ["梱包資材名", "単位質量"],
-                           "records": [["テスラピン", "0.5"]]},
-                          ensure_ascii=False)
+                           "records": [["テスラピン", "0.5"]]})
 
     def _ng_payload(self, msg):
-        return json.dumps({"ok": False, "error": msg}, ensure_ascii=False)
+        return json.dumps({"ok": False, "error": msg})
 
     def test_first_candidate_is_used_when_it_works(self):
         exe = _fake_cscript(os.path.join(self.tmp, "cs_ok"), self._ok_payload())

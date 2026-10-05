@@ -632,8 +632,9 @@ def test_放っておくと閉じる(looking, monkeypatch):
     from modules.packing_material_calculation.coil_tool import admin_session, config as cfg
     unlock(looking)
     assert admin_session.peek() is True
-    # 時間切れの幅を 0 にして、次に確かめたときに閉じることを見る
-    monkeypatch.setattr(cfg, "ADMIN_SESSION_IDLE_SEC", 0)
+    # 時間切れの幅を過ぎた扱いにして、次に確かめたときに閉じることを見る。
+    # 0 にしないのは、Windows の時計が 15.6ms 刻みで経過が 0 のまま(0 > 0 で閉じない)のことがあるため
+    monkeypatch.setattr(cfg, "ADMIN_SESSION_IDLE_SEC", -1)
     assert admin_session.peek() is False
 
     key = first_key(looking)

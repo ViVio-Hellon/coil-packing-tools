@@ -59,8 +59,9 @@ class RedirectPycacheTest(unittest.TestCase):
                    if k not in ("PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX")}
             env["COIL_PACKING_TOOLS_LOCAL_DIR"] = str(Path(d) / "local")
             env["COIL_PACKING_TOOLS_LOG_DIR"] = str(Path(d) / "local" / "logs")
+            env["PYTHONIOENCODING"] = "utf-8"
             res = subprocess.run([sys.executable, str(ROOT / "start_app.py"), "--check"],
-                                 cwd=d, env=env, capture_output=True, text=True, timeout=120)
+                                 cwd=d, env=env, capture_output=True, timeout=120, encoding="utf-8", errors="replace")
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             prefix = Path(d) / "local" / "pycache"
             names = {p.name.split(".")[0] for p in prefix.rglob("*.pyc")}
@@ -202,8 +203,9 @@ class MakeGoldenTest(unittest.TestCase):
         script = ROOT / "modules" / "packing_details" / "scripts" / "make_golden.py"
         with tempfile.TemporaryDirectory() as d:
             res = subprocess.run([sys.executable, str(script), str(Path(d) / "無い")],
-                                 cwd=d, capture_output=True, text=True, timeout=60,
-                                 env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+                                 cwd=d, capture_output=True, timeout=60, encoding="utf-8", errors="replace",
+                                 env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1",
+                                          PYTHONIOENCODING="utf-8"))
         self.assertNotIn("ModuleNotFoundError", res.stderr)
         self.assertIn("取り込み元が足りません", res.stdout + res.stderr)
 
@@ -225,9 +227,9 @@ class LogDirTest(unittest.TestCase):
                 "from modules.packing_material_calculation.coil_tool import config as m; "
                 "print(d.LOG_DIR == logging_utils.log_dir() == m.LOG_DIR)" % str(ROOT))
         env = dict(os.environ, PACKING_DETAILS_LOG_DIR="/elsewhere/a", COIL_TOOL_LOG_DIR="/elsewhere/b",
-                   PYTHONDONTWRITEBYTECODE="1")
+                   PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8")
         res = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT), env=env,
-                             capture_output=True, text=True, timeout=60)
+                             capture_output=True, timeout=60, encoding="utf-8", errors="replace")
         self.assertEqual(res.stdout.strip(), "True", res.stderr)
 
 
