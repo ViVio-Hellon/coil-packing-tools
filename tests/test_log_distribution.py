@@ -35,12 +35,16 @@ class _Isolated(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="cpt-logdist-"))
         self.addCleanup(shutil.rmtree, self.tmp, True)
+        # 元の場所へ戻す(後の試験のため)。**環境変数を戻したあとに**読み直す
+        # (後片付けは逆順)。先に読み直すと、試験で入れた出力先(`\\server\share\logs`)を
+        # 見に行き、Linux ではアプリのフォルダにその名のフォルダを作り、Windows では
+        # ネットワークの場所へ書きに行っていた
+        self.addCleanup(logging_utils.apply_settings)
         env = {k: v for k, v in os.environ.items() if k != logging_utils.ENV_LOG_DIR}
         env["COIL_PACKING_TOOLS_SETTINGS_PATH"] = str(self.tmp / "settings.json")
         patcher = mock.patch.dict(os.environ, env, clear=True)
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.addCleanup(logging_utils.apply_settings)        # 元の場所へ戻す(後の試験のため)
         dist = mock.patch.object(log_distribution, "DIR", self.tmp / "配布設定" / "common")
         dist.start()
         self.addCleanup(dist.stop)
@@ -52,6 +56,15 @@ class _Isolated(unittest.TestCase):
             json.dumps({"format": fmt, "created_at": "2026-10-02 09:00:00",
                         "created_on": "LINE-PC-01", "settings": settings}, ensure_ascii=False),
             encoding="utf-8")
+
+
+class NoStrayFolderTest(_Isolated):
+    def test_cleanup_does_not_create_the_saved_log_place(self):
+        """試験で入れた出力先を、後片付けで見に行かない(アプリのフォルダを汚さない)。"""
+        from common import app_config
+        local_settings.save(local_settings.KEY_LOG_DIR, r"\\server\share\logs")
+        self.doCleanups()
+        self.assertFalse((Path(app_config.APP_ROOT) / r"\\server\share\logs").exists())
 
 
 class ExportTest(_Isolated):
