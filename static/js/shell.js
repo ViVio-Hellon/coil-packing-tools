@@ -93,6 +93,58 @@
     window.addEventListener("blur", function () { set(false); });
   })();
 
+  // ---------------------------------------------------------- 画面の色(統合 1.0.16)
+  // 上の帯の「自動 / ライト / ダーク」。サーバに保存(このPC)し、この画面と、開いている
+  // 画面すべて(3機能の iframe・ログ・別のタブの帳票)をその場で切り替える。
+  // 各画面は差し込まれた theme.js が BroadcastChannel を受けて data-theme を付け替える。
+  // 使えないブラウザに備えて、統合画面の中の iframe は直接も付け替える(同じ origin)。
+  (function () {
+    var box = $("themeSwitch");
+    if (!box) return;
+    var buttons = Array.prototype.slice.call(box.querySelectorAll("[data-theme-set]"));
+    var channel = null;
+    try { channel = new BroadcastChannel("cpt-theme"); } catch (e) { channel = null; }
+    function applyTo(doc, theme) {
+      try {
+        var root = doc.documentElement;
+        if (theme === "light" || theme === "dark") root.setAttribute("data-theme", theme);
+        else root.removeAttribute("data-theme");
+      } catch (e) { /* 読み込み中の枠は飛ばす(開いたときにサーバが付ける) */ }
+    }
+    function show(theme) {
+      buttons.forEach(function (b) {
+        b.setAttribute("aria-pressed", b.dataset.themeSet === theme ? "true" : "false");
+      });
+    }
+    function apply(theme) {
+      applyTo(document, theme);
+      Array.prototype.forEach.call(document.querySelectorAll("iframe"), function (f) {
+        try { applyTo(f.contentDocument, theme); } catch (e) { /* 別の origin は触らない */ }
+      });
+      if (channel) channel.postMessage({ type: "theme", theme: theme });
+      show(theme);
+    }
+    buttons.forEach(function (b) {
+      b.addEventListener("click", function () {
+        var theme = b.dataset.themeSet;
+        var before = (buttons.filter(function (x) {
+          return x.getAttribute("aria-pressed") === "true"; })[0] || {}).dataset;
+        apply(theme);                                   // 押したらすぐ変える
+        fetch("/api/theme", {
+          method: "POST", cache: "no-store",
+          headers: { "Content-Type": "application/json", "X-Tool-Token": TOKEN },
+          body: JSON.stringify({ theme: theme })
+        }).then(function (r) {
+          if (!r.ok) throw new Error(String(r.status));
+        }).catch(function () {
+          // 保存できなければ元へ戻す(次に開いた画面と食い違わせない)
+          if (before && before.themeSet) apply(before.themeSet);
+          window.alert("画面の色を保存できませんでした。もう一度押してください。");
+        });
+      });
+    });
+  })();
+
   // ---------------------------------------------------------- ログとエラーの記録
   // 上の帯の「ログ」。中身は /log(出力先の設定・エラーの一覧)。開くたびに読み直す。
   // 機能の画面の隅に出たエラー番号の「中身を見る」からも開く(postMessage。同じ origin だけ)

@@ -47,6 +47,19 @@
       <p>統合ツールの版は配るたびに上がります。機能の版は、その機能の中身を変えたときだけ上がります。</p>
     </div>
     <div class="topbar__end">
+      {# 画面の色(統合 1.0.16)。統合画面と3機能の画面・ログの画面がそろって変わる。
+         このPCに保存。紙(帳票・印刷用のタブ・ラベル)はどれを選んでも白地のまま #}
+      {% set themes = [("auto", "自動", "ブラウザの「外観」(ダーク/ライト)に合わせる"),
+                       ("light", "ライト", "いつも明るい色"),
+                       ("dark", "ダーク", "いつも暗い色")] %}
+      <div class="themesw" role="group" aria-label="画面の色(3機能共通・このPCに保存)" id="themeSwitch">
+        <span class="themesw__label">画面の色</span>
+        {% for key, label, hint in themes %}
+        <button type="button" class="themesw__btn" data-theme-set="{{ key }}"
+                aria-pressed="{{ 'true' if (theme or 'auto') == key else 'false' }}"
+                title="{{ hint }}(3機能共通・このPCに保存。紙は白地のまま)">{{ label }}</button>
+        {% endfor %}
+      </div>
       {# ログとエラーの記録(3機能共通)。出力先の設定・エラーの一覧(なぜなぜ分析用) #}
       <button class="btn btn--bar" type="button" id="logBtn" aria-haspopup="dialog"
               title="ログとエラーの記録(出力先の設定・エラーの一覧)">ログ</button>

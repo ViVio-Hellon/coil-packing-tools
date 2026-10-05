@@ -41,7 +41,8 @@
    上の帯の「ログ」で出力先を変えると、すぐ PC の名前のフォルダに書かれる → 配布設定に
    書き出す・消す → 既定に戻す
 7. 配色(`--only theme`)
-   ブラウザの外観がダークのとき、3機能の背景が暗くそろう。印刷用のタブとバーコードは白地のまま
+   ブラウザの外観がダークのとき、3機能の背景が暗くそろう。印刷用のタブとバーコードは白地のまま。
+   上の帯の「画面の色」でブラウザと逆を選んでも3機能と統合画面がそろい、読み直しても残る
 8. 印刷する(`--only print`。一連の流れのあと)
    3機能の印刷プレビュー11画面すべてで「印刷する」が1つあり、押すと印刷のダイアログが開き
    (window.print が呼ばれた回数を数える)、印刷のときには隠れる(紙に出ない)
@@ -1231,6 +1232,50 @@ def scenario_theme(app: App, browser, note: dict) -> None:
         pg.close()
     finally:
         ctx.close()
+    _theme_switch(app, browser)
+
+
+def _theme_lums(sh) -> dict:
+    lum = {k: round(sh.tab(k).evaluate(_BG), 2) for k in ("details", "pena", "material")}
+    lum["統合画面"] = round(sh.page.evaluate(_BG), 2)
+    return lum
+
+
+def _theme_switch(app: App, browser) -> None:
+    """上の帯の「画面の色」(統合 1.0.16)。ブラウザの外観と逆を選んでも、3機能と統合画面が
+    そろって変わる・読み直しても残る・紙は白地のまま・自動に戻すとブラウザに合わせる。"""
+    for scheme, pick, dark in (("light", "dark", True), ("dark", "light", False)):
+        ctx = browser.new_context(viewport={"width": 1400, "height": 900}, color_scheme=scheme)
+        try:
+            sh = Shell(ctx, app)
+            sh.ready(20)
+            sh.page.click(f'[data-theme-set="{pick}"]')
+            sh.page.wait_for_timeout(500)
+            want = (lambda v: v < 0.2) if dark else (lambda v: v > 0.8)
+            lum = _theme_lums(sh)
+            name = {"dark": "ダーク", "light": "ライト"}[pick]
+            check(f"画面の色: ブラウザが{scheme}でも「{name}」を押すと3機能と統合画面がそろう",
+                  all(want(v) for v in lum.values()), lum)
+            sh.page.reload()
+            sh.ready(20)
+            lum = _theme_lums(sh)
+            pressed = sh.page.get_attribute(f'[data-theme-set="{pick}"]', "aria-pressed")
+            check(f"画面の色: 読み直しても「{name}」のまま(このPCに保存)",
+                  all(want(v) for v in lum.values()) and pressed == "true", (lum, pressed))
+            if dark:
+                pg = ctx.new_page()
+                pg.goto(app.base + "/pena/labels/print?ob=5")
+                pg.wait_for_timeout(500)
+                check("画面の色: ダークを選んでもラベルの印刷用のタブは白地のまま",
+                      pg.evaluate(_BG) > 0.95, round(pg.evaluate(_BG), 2))
+                pg.close()
+            sh.page.click('[data-theme-set="auto"]')
+            sh.page.wait_for_timeout(500)
+            lum = _theme_lums(sh)
+            back = (lambda v: v > 0.8) if scheme == "light" else (lambda v: v < 0.2)
+            check(f"画面の色: 「自動」でブラウザ({scheme})に合わせる", all(back(v) for v in lum.values()), lum)
+        finally:
+            ctx.close()
 
 
 # ======================================================================

@@ -147,3 +147,15 @@ button.ver:hover{ color:var(--bar-ink); }
 .logdlg__head .btn{ margin-left:auto; }
 .logdlg__body{ flex:1 1 auto; display:flex; min-height:0; }
 .logdlg__frame{ flex:1 1 auto; width:100%; border:0; background:var(--ground); }
+
+
+/* ---- 画面の色(上の帯。統合 1.0.16) ---- */
+.themesw{ display:flex; align-items:center; gap:0; border:1px solid var(--bar-edge);
+  border-radius:7px; overflow:hidden; background:var(--bar-face); }
+.themesw__label{ font-size:11px; color:var(--bar-muted); padding:0 8px 0 10px; }
+.themesw__btn{ font:inherit; font-size:12px; padding:3px 10px; cursor:pointer; border:0;
+  border-left:1px solid var(--bar-edge); background:transparent; color:var(--bar-ink); }
+.themesw__btn:hover{ background:#ffffff26; }
+.themesw__btn[aria-pressed="true"]{ background:var(--accent); color:#06262b; font-weight:700; }
+.themesw__btn:focus-visible{ outline:2px solid #fff; outline-offset:-2px; }
+@media (max-width:900px){ .themesw__label{ display:none; } }

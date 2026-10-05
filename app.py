@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -129,6 +130,7 @@ def create_app(mode: str = modes.MAIN, *, token: Optional[str] = None,
     app.config["VERSION_SET"] = versions.version_set(app.config["VERSIONS"])
     _install_tab_alive(app, [m["prefix"] for m in loaded])
     _install_error_report(app, [m["prefix"] for m in loaded])
+    _install_theme(app)
     _install_boot_redirect(app, loaded)
     _install_shutdown_guard(app, loaded)
 
@@ -195,6 +197,64 @@ def _install_tab_alive(app: Flask, prefixes: list) -> None:
         injected = inject_tab_alive(html, tag)
         if injected is not html:
             response.set_data(injected)
+        return response
+
+
+# ------------------------------------------------------------------
+# 画面の色(統合 1.0.16。現場の指摘: ペナラベルだけ背景がライト。3つのツール共通で
+# ダークとライトを切り替えるボタンを)
+# ------------------------------------------------------------------
+THEME_MARK = "js/theme.js"
+THEME_LABELS = {"auto": "自動(ブラウザの外観に合わせる)", "light": "ライト", "dark": "ダーク"}
+_HTML_TAG = re.compile(r"<html\b[^>]*>", re.IGNORECASE)
+_THEME_ATTR = re.compile(r'\s+data-theme="[^"]*"')
+
+
+def apply_theme(html: str, theme: str) -> str:
+    """文書の `<html>` に `data-theme` を付ける(light / dark)。auto なら外す。
+
+    3機能・統合画面・ログの CSS は、どれも `<html data-theme="dark|light">` を
+    ブラウザの外観より優先する作り(ペナラベルは 1.5.12 で合わせた)。
+    サーバで付けるので、開いた瞬間から選んだ色で出る(ちらつかない)。
+    `<html>` の無い HTML(ペナラベルの「中身だけ」の断片)はそのまま。
+    """
+    found = _HTML_TAG.search(html)
+    if not found:
+        return html
+    tag = _THEME_ATTR.sub("", found.group(0))
+    if theme in ("light", "dark"):
+        tag = tag[:-1] + f' data-theme="{theme}">'
+    if tag == found.group(0):
+        return html
+    return html[:found.start()] + tag + html[found.end():]
+
+
+def _install_theme(app: Flask) -> None:
+    """どの画面(HTML)にも、選んだ画面の色を付け、切り替えを受ける `theme.js` を差し込む。
+
+    統合画面・3機能の画面・ログの画面・帳票と印刷用のタブまで全部。帳票と印刷用のタブは
+    **紙なので配色を持たない**(梱包明細・資材計算の帳票に暗い配色は無く、ペナラベルの
+    印刷用のタブは `body.print-only` で白地に戻す)ので、付けても見た目は変わらない。
+    各機能のコードは触らずに、ここで差し込む(`tab_alive.js` と同じ)。
+    """
+    @app.after_request
+    def _theme(response):                       # noqa: ANN202 - Flaskのフック
+        if (request.method != "GET" or response.status_code != 200
+                or response.mimetype != "text/html"
+                or response.direct_passthrough or not response.is_sequence):
+            return response
+        if request.args.get("pane") == "1":
+            return response
+        html = response.get_data(as_text=True)
+        if not _HTML_TAG.search(html):
+            return response
+        themed = apply_theme(html, local_settings.theme())
+        if THEME_MARK not in themed:
+            tag = '<script src="%s" defer></script>' % url_for("static", filename=THEME_MARK)
+            at = themed.lower().rfind("</body>")
+            themed = themed + tag if at < 0 else themed[:at] + tag + themed[at:]
+        if themed is not html:
+            response.set_data(themed)
         return response
 
 
@@ -436,6 +496,7 @@ def _shell_blueprint() -> Blueprint:
             server_pid=os.getpid(),
             alive_poll_ms=idle_exit.HEARTBEAT_MS,
             health_poll_ms=app_config.health_poll_seconds() * 1000,
+            theme=local_settings.theme(),
         )
 
     @bp.get("/api/health")
@@ -596,6 +657,33 @@ def _log_routes(bp: Blueprint) -> None:
                                dedup_key=f"{kind}|{module}|{message}|{source}")
         g.error_id = eid
         return jsonify({"ok": True, "error_id": eid})
+
+    @bp.get("/api/theme")
+    def theme_state():
+        """画面の色(auto / light / dark)。業務データではないのでトークンは要らない
+        (戻る・進むで控えから出た画面が、いまの色を聞き直す)。"""
+        return jsonify({"ok": True, "theme": local_settings.theme(),
+                        "choices": list(local_settings.THEMES)})
+
+    @bp.post("/api/theme")
+    def theme_save():
+        """上の帯の「画面の色」。**このPCに保存**(`common/local_settings.py`)。
+
+        統合画面と3機能の画面・ログの画面がそろって変わる(開いている画面は
+        `static/js/theme.js` が切り替え、次に開く画面はサーバが `<html data-theme>` を付ける)。
+        """
+        deny = _need_token()
+        if deny is not None:
+            return deny
+        value = str((request.get_json(silent=True) or {}).get("theme", ""))
+        if value not in local_settings.THEMES:
+            return security.error_json("bad_input", "自動・ライト・ダークのどれかです", 400)
+        try:
+            local_settings.save(local_settings.KEY_THEME, None if value == "auto" else value)
+        except OSError as exc:
+            return jsonify({"ok": False, "message": f"設定を書けませんでした: {exc}"}), 500
+        log.info("画面の色を変えました: %s", THEME_LABELS[value])
+        return jsonify({"ok": True, "theme": value})
 
     @bp.get("/api/log/status")
     def log_status():

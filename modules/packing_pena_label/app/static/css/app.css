@@ -614,6 +614,82 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
   :root:not([data-theme="light"]) body:not(.print-only) .pwstate.ok{color:var(--ok)}
   :root:not([data-theme="light"]) body:not(.print-only) .pwstate.ng{color:var(--err)}
 }
+/* 上の帯の「画面の色」で「ダーク」を選んだとき(1.5.12。統合 1.0.16)。
+   **上の @media の中と同じ中身**を、ブラウザの外観に関わらず効かせる
+   (先頭の :root:not([data-theme="light"]) を :root[data-theme="dark"] にしただけ。
+   直すときは両方 ── tests/test_theme.py が食い違いを見つける)。
+   「ライト」を選んだときは data-theme="light" で上の @media が効かない */
+@media screen{
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#101a1e; --panel:#17242a; --line:#2e434c; --ink:#e6eef1; --muted:#a9bcc4;
+    --accent:#5cc6cf; --accent-ink:#0b2a2e; --warn:#e59450; --err:#f07672; --ok:#6fc58e;
+    --focus:#5cc6cf; --head:#1e2e35;
+    --sunken:#1e2e35; --stripe:#1a282e; --hi:#3a3218;
+    --ok-soft:#1d3527; --ok-line:#2f5a3e; --warn-soft:#3a2a18; --warn-line:#6b4a24;
+    --err-soft:#3d2020; --err-line:#6e3431; --info-soft:#17303d; --info-line:#2b4b5e;
+    --input:#1c2a30;
+  }
+  :root[data-theme="dark"] body:not(.print-only) .src-access,
+  :root[data-theme="dark"] body:not(.print-only) .src-sqlite,
+  :root[data-theme="dark"] body:not(.print-only) .conn.ok,
+  :root[data-theme="dark"] body:not(.print-only) .pill.ok,
+  :root[data-theme="dark"] body:not(.print-only) .okbox{background:var(--ok-soft); color:var(--ok); border-color:var(--ok-line)}
+  :root[data-theme="dark"] body:not(.print-only) .src-csv,
+  :root[data-theme="dark"] body:not(.print-only) .pill.warn,
+  :root[data-theme="dark"] body:not(.print-only) .warnbox,
+  :root[data-theme="dark"] body:not(.print-only) .layer-restart,
+  :root[data-theme="dark"] body:not(.print-only) .card.warn{background:var(--warn-soft); color:var(--warn); border-color:var(--warn-line)}
+  :root[data-theme="dark"] body:not(.print-only) .card.warn code{background:#4a3520}
+  :root[data-theme="dark"] body:not(.print-only) .src.stale,
+  :root[data-theme="dark"] body:not(.print-only) .conn.ng,
+  :root[data-theme="dark"] body:not(.print-only) .errbox,
+  :root[data-theme="dark"] body:not(.print-only) .stalebox{background:var(--err-soft); color:var(--err); border-color:var(--err-line)}
+  :root[data-theme="dark"] body:not(.print-only) .stalebox b{color:var(--err)}
+  :root[data-theme="dark"] body:not(.print-only) .size-row label:hover{background:#ffffff14}
+  /* サイズの色分け(VBA の色)はそのまま。字は黒で読めるように */
+  :root[data-theme="dark"] body:not(.print-only) .sz-head{color:#16202c}
+  :root[data-theme="dark"] body:not(.print-only) .sz-10-63 .sz-head{color:#fff}
+  :root[data-theme="dark"] body:not(.print-only) .cur-tbl tbody th,
+  :root[data-theme="dark"] body:not(.print-only) .block tr.sum td,
+  :root[data-theme="dark"] body:not(.print-only) .pack .out{background:var(--sunken)}
+  :root[data-theme="dark"] body:not(.print-only) input[type=text],
+  :root[data-theme="dark"] body:not(.print-only) input[type=number],
+  :root[data-theme="dark"] body:not(.print-only) input[type=password],
+  :root[data-theme="dark"] body:not(.print-only) select{background:var(--input); color:var(--ink)}
+  :root[data-theme="dark"] body:not(.print-only) input[readonly],
+  :root[data-theme="dark"] body:not(.print-only) .take.off input{background:var(--sunken); color:var(--muted)}
+  :root[data-theme="dark"] body:not(.print-only) .btn{background:linear-gradient(#24343c,#1c2a30); color:var(--ink)}
+  :root[data-theme="dark"] body:not(.print-only) .btn:hover{background:linear-gradient(#2c3e47,#22323a)}
+  :root[data-theme="dark"] body:not(.print-only) .btn:active{background:#1a262c}
+  :root[data-theme="dark"] body:not(.print-only) .btn-primary{background:#0e6a72; color:#fff; border-color:#2a8f98}
+  :root[data-theme="dark"] body:not(.print-only) .btn-primary:hover{background:#127a83}
+  :root[data-theme="dark"] body:not(.print-only) .btn-danger{background:linear-gradient(#2e2224,#261c1e);
+    border-color:var(--err-line); color:var(--err)}
+  :root[data-theme="dark"] body:not(.print-only) .subtab.on{background:#0e6a72; color:#fff; border-color:#2a8f98}
+  :root[data-theme="dark"] body:not(.print-only) .tbl,
+  :root[data-theme="dark"] body:not(.print-only) .card,
+  :root[data-theme="dark"] body:not(.print-only) .block,
+  :root[data-theme="dark"] body:not(.print-only) .pbar-card,
+  :root[data-theme="dark"] body:not(.print-only) .where{background:var(--panel)}
+  :root[data-theme="dark"] body:not(.print-only) .tbl tbody tr:nth-child(even){background:var(--stripe)}
+  :root[data-theme="dark"] body:not(.print-only) .tbl tbody tr.hi{background:var(--hi)}
+  :root[data-theme="dark"] body:not(.print-only) .layer-local{background:#17304a; color:#9cc6f0; border-color:#2b4d70}
+  :root[data-theme="dark"] body:not(.print-only) .layer-app{background:var(--sunken); color:var(--muted)}
+  :root[data-theme="dark"] body:not(.print-only) .layer-env{background:#2a1f3a; color:#c8b3e6; border-color:#4a3a66}
+  :root[data-theme="dark"] body:not(.print-only) .note-diff{background:var(--info-soft); color:#b9d6ea}
+  :root[data-theme="dark"] body:not(.print-only) #mTbl .sortbtn:hover{background:#ffffff14}
+  :root[data-theme="dark"] body:not(.print-only) .pbar{background:rgba(0,0,0,.5)}
+  :root[data-theme="dark"] body:not(.print-only) .pbar-track{background:var(--sunken)}
+  :root[data-theme="dark"] body:not(.print-only) .pbar-text,
+  :root[data-theme="dark"] body:not(.print-only) .where-dist,
+  :root[data-theme="dark"] body:not(.print-only) .store-note{color:var(--muted)}
+  :root[data-theme="dark"] body:not(.print-only) .pwdialog{background:var(--panel); color:var(--ink);
+    border-color:var(--line)}
+  :root[data-theme="dark"] body:not(.print-only) .pwstate.ok{color:var(--ok)}
+  :root[data-theme="dark"] body:not(.print-only) .pwstate.ng{color:var(--err)}
+}
+
 
 /* 紙(印刷用のタブ・画面の中の台紙・ラベル)は、どの配色でも白地に黒 */
 body.print-only, .sheet, .label, .labelsheet, .lbl{

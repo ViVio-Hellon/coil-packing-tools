@@ -5,6 +5,7 @@ r"""統合アプリの設定(このPCに保存) ── 3機能に共通のもの
 
     log_dir        ログの出力先(空なら このPCの既定 = %LOCALAPPDATA%\CoilPackingTools\logs)
     log_keep_days  ログとエラーの記録を残す日数
+    theme          画面の色(auto = ブラウザの外観に合わせる / light / dark。統合 1.0.16)
 
 置き場所は `%LOCALAPPDATA%\CoilPackingTools\data\settings.json`(このPCで引き継ぐ。
 アプリのフォルダを入れ替えても残る)。
@@ -27,6 +28,10 @@ FILE_NAME = "settings.json"
 
 KEY_LOG_DIR = "log_dir"
 KEY_LOG_KEEP_DAYS = "log_keep_days"
+KEY_THEME = "theme"
+
+#: 画面の色。auto はブラウザの「外観」(prefers-color-scheme)に合わせる(これまでどおり)
+THEMES = ("auto", "light", "dark")
 
 #: ログとエラーの記録を残す日数の既定と、選べる幅。
 #: なぜなぜ分析は「先月も同じことがあったか」を見ることが多いので、半年は残す
@@ -87,3 +92,9 @@ def log_keep_days() -> int:
     except (TypeError, ValueError):
         return LOG_KEEP_DAYS_DEFAULT
     return min(max(days, LOG_KEEP_DAYS_MIN), LOG_KEEP_DAYS_MAX)
+
+
+def theme() -> str:
+    """画面の色(auto / light / dark)。おかしな値は auto(手で直した設定ファイルでも止めない)。"""
+    value = get(KEY_THEME, "auto")
+    return value if value in THEMES else "auto"
