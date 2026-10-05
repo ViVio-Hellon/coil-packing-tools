@@ -193,7 +193,9 @@ class App:
         self.conf = home / "app.json"
         self.conf.write_text(json.dumps({
             "app_id": "nlm.coil-packing-tools", "display_name": "コイル梱包ツール",
-            "version": "1.0.0", "local_dir_name": "CoilPackingTools",
+            # 版は本物のまま(画面の帯・撮った画面に出る版を、配る版と合わせる)
+            "version": json.loads((ROOT / "config" / "app.json").read_text(encoding="utf-8"))["version"],
+            "local_dir_name": "CoilPackingTools",
             "server": {"host": "127.0.0.1", "port_retry": 3, "roles": {"main": {"port": self.port}}},
         }, ensure_ascii=False), encoding="utf-8")
         self.local = home / "local"
