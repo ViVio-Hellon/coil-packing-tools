@@ -761,8 +761,17 @@ def update(changes: dict[str, Any]) -> Written:
 
 
 def reset_for_tests() -> None:
-    """試験用。ログの状態を戻す。"""
+    """試験用。ログの状態を戻す。
+
+    **裏の読み(待ちきれずに続いている1本)も終わるまで待つ。** 待たずに試験の
+    共有フォルダを消すと、Windows では読みかけのマスタを消せずに後片付けが落ちる
+    (遅い Windows では、マスタを掴ませる試験の読みが `READ_TIMEOUT_SEC` を超えて
+    裏に残る。GitHub Actions の Windows で見つかった)。
+    """
     global _last_problem, _legacy_warned, _inflight, _mirror_done, _last_master_state
+    job = _inflight
+    if job is not None:
+        job.thread.join(30)
     if _mirror_thread is not None:
         _mirror_thread.join(5)
     _last_problem = None
