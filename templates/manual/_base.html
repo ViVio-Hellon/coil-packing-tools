@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}操作説明書{% endblock %} ─ {{ display_name }}</title>
+<link rel="icon" href="data:image/svg+xml,
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>
+  <rect width='16' height='16' rx='3' fill='%230b5d6e'/>
+  <text x='8' y='12' font-size='10' text-anchor='middle' fill='white'>梱</text></svg>">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/manual.css') }}">
+</head>
+{#
+  操作説明書の外枠(統合 1.2.0。common/manual.py)。
+  帯: 説明書の名前・いま動いている統合ツールの版・4冊の行き来(各冊のいまの版つき)。
+  統合画面の「説明書」(ダイアログ)の中で開いたときは embed(帯の名前を省く)。
+  **ダウンロードにしない**: このまま画面で読む。紙が要るときは「印刷する」。
+#}
+{%- set q = '?embed=1' if embed else '' -%}
+{%- import "manual/_macros.html" as m with context -%}
+<body class="{{ 'embed' if embed else '' }}">
+<header class="mhead"><div class="mhead__in">
+  <div class="mhead__top">
+    <p class="mhead__title">操作説明書</p>
+    <span class="mhead__app">{{ display_name }} VER{{ app_version }}</span>
+  </div>
+  <nav class="mnav" aria-label="説明書">
+    <a href="{{ url_for('shell.manual_index') }}{{ q }}"{% if not manual %} aria-current="page"{% endif %}>目次</a>
+    {%- for item in manuals %}
+    <a href="{{ url_for('shell.manual_page', key=item.key) }}{{ q }}"
+       {%- if manual and manual.key == item.key %} aria-current="page"{% endif %}>
+      <span>{{ item.title }}</span><span class="ver">VER{{ item.version }}</span></a>
+    {%- endfor %}
+    <span class="mhead__tools noprint" style="align-self:center">
+      <button class="mbtn" type="button" id="manualPrint" title="この説明書を紙に刷る">印刷する</button>
+    </span>
+  </nav>
+</div></header>
+<div class="mwrap">
+  <aside class="toc" aria-label="この説明書の目次">{% block toc %}{% endblock %}</aside>
+  <main>
+    {% if stale %}
+    <p class="stale">写真は
+      {% for s in stale %}{{ m.vlabel(s.key) }} VER{{ s.then }}{% if not loop.last %}・{% endif %}{% endfor %}
+      の画面です(いまは
+      {% for s in stale %}VER{{ s.now }}{% if not loop.last %}・{% endif %}{% endfor %})。
+      ボタンの位置や文字が少し違うことがあります。</p>
+    {% endif %}
+    {% block body %}{% endblock %}
+    <p class="foot">
+      {{ display_name }} VER{{ app_version }}
+      {%- for item in manuals if item.version_key != 'app' %} ・ {{ item.title }} VER{{ item.version }}{% endfor %}
+      {%- if taken %} ・ 写真を撮った日 {{ taken }}{% endif %}
+    </p>
+  </main>
+</div>
+<script>
+  // 「印刷する」: この説明書だけを刷る(統合画面のダイアログの中でも、その中身だけ)
+  document.getElementById("manualPrint").addEventListener("click", function () { window.print(); });
+</script>
+</body>
+</html>

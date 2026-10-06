@@ -4,7 +4,7 @@
 
     python tools/e2e_scenarios.py                 # 一連の流れ → 交互に使う → 放置する
     python tools/e2e_scenarios.py --quick         # 放置を短くする(動きの確認用)
-    python tools/e2e_scenarios.py --only flow     # flow / print / alternate / multitab / storage / master / trail / theme / idle のどれかだけ
+    python tools/e2e_scenarios.py --only flow     # flow / print / alternate / multitab / storage / master / trail / theme / manual / idle のどれかだけ
 
 【何をするか】
 本物の起動(`start_app.py`)で統合アプリを立て、実ブラウザ(Chromium)で統合画面を開き、
@@ -43,6 +43,9 @@
 7. 配色(`--only theme`)
    ブラウザの外観がダークのとき、3機能の背景が暗くそろう。印刷用のタブとバーコードは白地のまま。
    上の帯の「画面の色」でブラウザと逆を選んでも3機能と統合画面がそろい、読み直しても残る
+9. 説明書(`--only manual`。統合 1.2.0)
+   上の帯の「説明書」で、見ているタブのツールの説明書が開き、写真がすべて出て版が出る。
+   ダイアログの中で冊を移れ、「別の窓で開く」でその冊が別のタブで開く。ダウンロードにならない
 8. 印刷する(`--only print`。一連の流れのあと)
    3機能の印刷プレビュー11画面すべてで「印刷する」が1つあり、押すと印刷のダイアログが開き
    (window.print が呼ばれた回数を数える)、印刷のときには隠れる(紙に出ない)
@@ -587,6 +590,66 @@ def scenario_flow(app: App, ctx, sh: Shell, note: dict) -> None:
     material_ready(sh.frame("material"))
     trouble = [] if sh.ready() else sh.trouble()
     check("一連の流れのあと、どの画面にも断り・接続なしが出ていない", not trouble, trouble)
+
+
+# ======================================================================
+# 説明書(統合 1.2.0): 上の帯の「説明書」で、見ているタブのツールの説明書が開く
+# ======================================================================
+def _manual_frame(sh):
+    # 枠の一覧・URL は Playwright が知らせを受けて更新する。wait_until の time.sleep の間は
+    # 受けないので、ここで一瞬受けてから見る(できたばかりの説明書の枠が見つからなかった)
+    sh.page.wait_for_timeout(1)
+    return next((f for f in sh.page.frames if "/manual/" in f.url), None)
+
+
+def scenario_manual(app: App, ctx, sh: Shell, note: dict) -> None:
+    print("■ 説明書(上の帯の「説明書」)")
+    sh.ready()                                   # 統合画面の JS が動いてから押す
+    downloads: list = []
+    ctx.on("page", lambda p: p.on("download", lambda d: downloads.append(d.url)))
+    sh.page.on("download", lambda d: downloads.append(d.url))
+    for key, title in (("details", "梱包明細"), ("pena", "ペナラベル"), ("material", "資材計算")):
+        sh.tab(key)
+        sh.page.click("#manualBtn")
+        ok = wait_until(lambda: (_manual_frame(sh) is not None
+                                 and f"/manual/{key}" in _manual_frame(sh).url
+                                 and title in text(_manual_frame(sh), "h1")), 10)
+        fr = _manual_frame(sh)
+        check(f"説明書: {title}のタブで押すと{title}の説明書が開く", ok, fr.url if fr else "開かない")
+        if fr is not None:
+            fr.wait_for_load_state()
+            bad = fr.evaluate("[...document.images].filter(i => !i.complete || i.naturalWidth === 0)"
+                              ".map(i => i.src)")
+            count = fr.evaluate("document.images.length")
+            check(f"説明書: {title}の写真がすべて出る", count > 3 and not bad, {"写真": count, "出ない": bad[:2]})
+            ver = text(fr, ".vbadge")
+            want = (app.health() or {}).get("versions", {}).get(key, "?")
+            check(f"説明書: {title}の版が出る", ver == f"VER{want}", ver)
+        sh.page.click("#manualClose")
+        sh.page.wait_for_timeout(200)
+    # ダイアログの中で別の冊へ移り、「別の窓で開く」でその冊が別のタブで開く
+    sh.tab("details")
+    sh.page.click("#manualBtn")
+    wait_until(lambda: _manual_frame(sh) is not None and "/manual/details" in _manual_frame(sh).url
+               and "梱包明細" in text(_manual_frame(sh), "h1"), 10)   # 読み終えてから押す
+    _manual_frame(sh).click('.mnav a[href^="/manual/pena"]')
+    moved = wait_until(lambda: "/manual/pena" in (_manual_frame(sh).url if _manual_frame(sh) else ""), 10)
+    check("説明書: ダイアログの中で別の冊へ移れる(ダイアログの形のまま)",
+          moved and "embed=1" in _manual_frame(sh).url, _manual_frame(sh).url if _manual_frame(sh) else "")
+    with ctx.expect_page() as info:
+        sh.page.click("#manualPop")
+    pop = info.value
+    pop.wait_for_load_state()
+    check("説明書: 「別の窓で開く」で、いま出ている冊が別のタブで開く",
+          "/manual/pena" in pop.url and "embed" not in pop.url
+          and not visible(sh.page, "#manualDialog[open]"), pop.url)
+    pop.evaluate("() => { window.__printed = 0; window.print = () => { window.__printed++; }; }")
+    pop.click("#manualPrint")
+    check("説明書: 「印刷する」で印刷の窓が開く", pop.evaluate("window.__printed") == 1)
+    pop.close()
+    check("説明書: ダウンロードにならない", not downloads, downloads[:2])
+    trouble = [] if sh.ready() else sh.trouble()
+    check("説明書を開いたあとも、どの画面にも断り・接続なしが出ていない", not trouble, trouble)
 
 
 # ======================================================================
@@ -1499,7 +1562,7 @@ def scenario_idle(app: App, ctx, sh: Shell, note: dict, minutes: dict) -> None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--only", choices=("flow", "print", "alternate", "multitab", "storage", "master",
-                                       "trail", "theme", "idle"))
+                                       "trail", "theme", "manual", "idle"))
     ap.add_argument("--shots", default="", help="保存先の画面の写しを置くフォルダ")
     ap.add_argument("--quick", action="store_true", help="放置を短くする")
     ap.add_argument("--keep", action="store_true", help="試験用の置き場所を残す")
@@ -1544,6 +1607,8 @@ def main(argv=None) -> int:
             scenario_trail(app, ctx, sh, note)
         if args.only in (None, "theme"):
             scenario_theme(app, br, note)
+        if args.only in (None, "manual"):
+            scenario_manual(app, ctx, sh, note)
         if args.only in (None, "idle"):
             minutes = ({"visible": 125, "hidden": 125, "sleep": 30, "report": 110} if args.quick else
                        {"visible": 360, "hidden": 300, "sleep": 120, "report": 150})

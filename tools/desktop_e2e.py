@@ -12,7 +12,9 @@
 1. 一連の流れ(3機能)と、**11 の印刷プレビューがすべて別の窓で開く**こと。
    どの窓でも「印刷する」が押せ(印刷の窓の代わりに呼ばれた回数を数える)、閉じられる
 2. 画面の色が開いている別の窓にも届く・印刷の窓は白地のまま
-3. 上の帯の「ログ」・包装仕様NOのコピー・閲覧システム(アプリの外)は窓の中で開かない
+3. 上の帯の「ログ」・包装仕様NOのコピー・閲覧システム(アプリの外)は窓の中で開かない。
+   上の帯の「説明書」は見ているタブの説明書をダイアログで開き(写真は外枠が返す)、
+   「別の窓で開く」で別の窓になる
 4. 画面を離れた合図(sendBeacon)が Python まで届く
 5. どのプロセスもポートで待ち受けない(WebDriver を使わずに起動して確かめる。
    WebDriver で動かすあいだは、WebDriver の検査口が待ち受けるため)
@@ -471,6 +473,38 @@ def scenario_main(rig: Rig):
             "var f=document.querySelector('#logBody iframe');"
             "return !!(f&&f.contentDocument&&f.contentDocument.querySelector('#incRows'))"), 10))
         w.click("#logClose")
+
+        # ---- 説明書(統合 1.2.0): 見ているタブの説明書がダイアログで開き、写真は外枠が返す。
+        #      「別の窓で開く」で別の窓になり、閉じられる
+        w.tab("pena")
+        w.switch(w.main)
+        w.frame(None)
+        w.click("#manualBtn")
+        shown = until(lambda: w.js(
+            "var f=document.querySelector('#manualBody iframe');var d=f&&f.contentDocument;"
+            "if(!d||d.readyState!=='complete'||!/\\/manual\\/pena/.test(f.contentWindow.location.pathname))"
+            "return null;var im=[].slice.call(d.images);"
+            "return im.length>3&&im.every(function(i){return i.complete&&i.naturalWidth>0})?im.length:null"), 15)
+        served = w.js("var f=document.querySelector('#manualBody iframe');"
+                      "var src=f.contentDocument.images[0].src;"
+                      "var x=new XMLHttpRequest();x.open('GET',src,false);x.send();"
+                      "return x.getResponseHeader('X-Served-By')")
+        check("説明書: 見ているタブ(ペナラベル)の説明書が開き、写真が出る(外枠が返す)",
+              shown and served == "desktop", {"写真": shown, "返した": served})
+        before = len(w.handles())
+        w.click("#manualPop")
+        opened = until(lambda: len(w.handles()) == before + 1, 12)
+        ok = False
+        if opened:
+            new = [h for h in w.handles() if h != w.main][-1]
+            w.switch(new)
+            ok = until(lambda: "/manual/pena" in w.js("return location.pathname")
+                       and w.js("return document.readyState") == "complete", 12)
+            w.js("window.close()")
+            until(lambda: len(w.handles()) == before, 8)
+            w.switch(w.main)
+            w.frame(None)
+        check("説明書: 「別の窓で開く」で別の窓に開き、閉じられる", opened and ok)
         w.tab("material")
         sent = w.js("return navigator.sendBeacon('/api/client-log', new Blob([JSON.stringify("
                     "{kind:'offline', message:'desktop-beacon', source:'/probe', count:1})],"

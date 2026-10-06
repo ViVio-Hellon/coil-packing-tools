@@ -172,6 +172,47 @@
     });
   })();
 
+  // ---------------------------------------------------------- 操作説明書(統合 1.2.0)
+  // 上の帯の「説明書」。**いま見ているタブのツールの説明書**(写真入り)を開く。
+  // 中身は /manual/<機能>(ダウンロードにしない。このまま読む)。説明書どうしは中で行き来できる。
+  // 「別の窓で開く」は、いまダイアログに出ている説明書を別の窓(デスクトップ版)・別のタブ
+  // (ブラウザ版)で開き直す。画面と並べて読むため。
+  (function () {
+    var btn = $("manualBtn"), dlg = $("manualDialog"), body = $("manualBody");
+    var pop = $("manualPop"), close = $("manualClose");
+    if (!btn || !dlg || !body) return;
+    var frame = null;
+    function currentKey() {
+      var pane = panes.filter(function (p) { return !p.hidden; })[0];
+      return pane ? pane.id.replace(/^pane-/, "") : "";
+    }
+    function open() {
+      if (!frame) {
+        frame = document.createElement("iframe");
+        frame.className = "logdlg__frame";
+        frame.title = "操作説明書";
+        body.appendChild(frame);
+      }
+      frame.src = "/manual/" + encodeURIComponent(currentKey()) + "?embed=1";
+      if (!dlg.open) { try { dlg.showModal(); } catch (e) { dlg.setAttribute("open", ""); } }
+    }
+    function shownPath() {
+      // ダイアログの中で別の説明書へ移っていれば、そちらを開く(同じ origin なので読める)
+      try {
+        var loc = frame.contentWindow.location;
+        if (loc.pathname.indexOf("/manual/") === 0) return loc.pathname + loc.hash;
+      } catch (e) { /* 読めなければ、いまのタブの説明書 */ }
+      return "/manual/" + encodeURIComponent(currentKey());
+    }
+    btn.addEventListener("click", open);
+    if (close) close.addEventListener("click", function () { dlg.close(); });
+    if (pop) pop.addEventListener("click", function () {
+      var path = frame ? shownPath() : "/manual/" + encodeURIComponent(currentKey());
+      window.open(path, "_blank");
+      dlg.close();
+    });
+  })();
+
   // ---------------------------------------------------------- 印刷(Ctrl+P)
   // 3機能の画面は iframe の中にある。ブラウザの Ctrl+P は**一番外の文書**
   // (この外枠)を刷るので、そのままでは見出しとタブと、iframe の見えている

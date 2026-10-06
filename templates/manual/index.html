@@ -1,0 +1,43 @@
+{% extends "manual/_base.html" %}
+{% import "manual/_macros.html" as m with context %}
+{% block title %}目次{% endblock %}
+{% block toc %}
+<b>この画面</b>
+<ol>
+  <li><a href="#books">説明書の一覧</a></li>
+  <li><a href="#versions">いま動いている版</a></li>
+  <li><a href="#howto">この説明書の読み方</a></li>
+</ol>
+{% endblock %}
+{% block body %}
+<h1>操作説明書</h1>
+<p class="lead">{{ display_name }}は、<b>梱包明細・ペナラベル・資材計算</b>の3つのツールを1つの画面にまとめたものです。
+  はじめて使うときは「はじめに・統合画面」から読んでください。各ツールの説明書は、写真の赤い丸数字の順に操作すれば終わるように書いてあります。</p>
+
+<h2 id="books">説明書の一覧</h2>
+<div class="cards">
+  {% for item in manuals %}
+  <a class="card" href="{{ url_for('shell.manual_page', key=item.key) }}{{ '?embed=1' if embed else '' }}">
+    <h3>{{ item.title }} <span class="vbadge">VER{{ item.version }}</span></h3>
+    <p>{{ item.summary }}</p>
+  </a>
+  {% endfor %}
+</div>
+
+<h2 id="versions">いま動いている版</h2>
+<p>版は<b>統合ツールの版</b>と<b>3つのツールの版</b>を分けて持っています。困ったときに問い合わせるときは、この版を伝えてください。</p>
+<div class="vers">
+  {% for item in manuals %}
+  <div class="vcard"><span>{{ display_name if item.version_key == 'app' else item.title }}</span><b>VER{{ item.version }}</b></div>
+  {% endfor %}
+</div>
+<p>同じ版は、統合画面の上の帯の版({{ m.b('VER' ~ app_version) }})を押すと出る一覧と、タブ・各ツールの見出しにも出ています(「はじめに・統合画面」の<a href="{{ url_for('shell.manual_page', key='shell') }}{{ '?embed=1' if embed else '' }}#versions">版の見方</a>)。</p>
+
+<h2 id="howto">この説明書の読み方</h2>
+<ol class="steps">
+  <li>{{ m.n(1) }}写真の中の<b>赤い丸数字</b>と、説明の番号は同じです。番号の順に操作します。</li>
+  <li>{{ m.n(2) }}{{ m.b('このように囲んだ文字') }}は、画面のボタンや項目の名前そのままです。</li>
+  <li>{{ m.n(3) }}紙が要るときは、上の {{ m.b('印刷する') }} で、いま開いている説明書だけを刷れます(ファイルを保存する必要はありません)。</li>
+</ol>
+<div class="tip"><b>コツ</b>統合画面の上の帯の {{ m.b('説明書') }} を押すと、いま見ているタブのツールの説明書が開きます。ダイアログの {{ m.b('別の窓で開く') }} を押すと、画面を見ながら横に並べて読めます。</div>
+{% endblock %}

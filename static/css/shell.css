@@ -147,6 +147,10 @@ button.ver:hover{ color:var(--bar-ink); }
 .logdlg__head .btn{ margin-left:auto; }
 .logdlg__body{ flex:1 1 auto; display:flex; min-height:0; }
 .logdlg__frame{ flex:1 1 auto; width:100%; border:0; background:var(--ground); }
+/* 操作説明書(統合 1.2.0)。ログと同じダイアログで、ボタンが2つ */
+.manualdlg{ width:min(1240px, 97vw); height:94vh; }
+.manualdlg__btns{ margin-left:auto; display:flex; gap:8px; }
+.logdlg__head .manualdlg__btns .btn{ margin-left:0; }
 
 
 /* ---- 画面の色(上の帯。統合 1.0.16) ---- */

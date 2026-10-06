@@ -5,6 +5,7 @@
     /api/alive             統合画面の心拍(自動終了の見張りへ)
     /api/shutdown          安全な停止(トークン必須)
     /log                   ログとエラーの記録(上の帯の「ログ」。出力先の設定・エラーの一覧)
+    /manual/...            操作説明書(上の帯の「説明書」。写真入り。common/manual.py)
     /api/client-log        画面(ブラウザ)で起きたエラーの報告(`static/js/error_report.js`)
     /api/log/...           ログの様子・設定・エラーの記録の一覧と中身(トークン必須)
     /details/...           梱包明細   (modules/packing_details)
@@ -48,7 +49,7 @@ from markupsafe import escape
 from werkzeug.exceptions import HTTPException
 
 from common import (app_config, boot_screen, idle_exit, incidents, local_settings,
-                    log_distribution, logging_utils, modes, security, versions)
+                    log_distribution, logging_utils, manual, modes, security, versions)
 from common.logging_utils import get_logger
 
 log = get_logger("coil_packing_tools", "app")
@@ -629,7 +630,29 @@ def _shell_blueprint() -> Blueprint:
         return jsonify({"stopped": True, "message": "終了します"})
 
     _log_routes(bp)
+    _manual_routes(bp)
     return bp
+
+
+# ------------------------------------------------------------------
+# 操作説明書(上の帯の「説明書」。統合 1.2.0)
+# ------------------------------------------------------------------
+def _manual_routes(bp: Blueprint) -> None:
+    # 梱包明細の見出しの「説明書」は、移植元の文字だけの詳しい説明書(/details/docs)のまま。
+    # 機能の動きは変えない(移植元の試験がそのまま通る)。写真入りの説明書からそちらへ案内する
+    @bp.get("/manual/")
+    def manual_index():
+        """説明書の目次。いま動いている版(統合ツールと3機能)も出す。"""
+        return render_template("manual/index.html", embed=request.args.get("embed") == "1",
+                               **manual.context())
+
+    @bp.get("/manual/<key>")
+    def manual_page(key):
+        """1冊の説明書(写真入り)。**ダウンロードにしない**(HTML のまま開く)。"""
+        if key not in manual.KEYS:
+            return redirect(url_for("shell.manual_index"))
+        return render_template(f"manual/{key}.html", embed=request.args.get("embed") == "1",
+                               **manual.context(key))
 
 
 # ------------------------------------------------------------------

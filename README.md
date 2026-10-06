@@ -9,6 +9,8 @@
 | ペナラベル | テスラ向け出荷ラベルの発行と風袋計算 | `ViVio-Hellon/packing-pena-label-python-web` | v1.5.0 |
 | 資材計算 | パレット・リプラ・緩衝材の員数、チェックリスト、発注票 | `ViVio-Hellon/packing-material-calculation-python-web` | VER 0.2.0 |
 
+**統合 1.2.0 から、上の帯の「説明書」で、写真入りの操作説明書(4冊)をツールの中で開けます**(下の「操作説明書」)。
+
 **統合 1.1.0 から、専用の窓で動くデスクトップ版(`コイル梱包ツール.exe`。ポートを使わない)が
 加わりました。** ブラウザ版(`Start.vbs`)も予備として残してあります(同時には動きません)。
 作りは [`docs/デスクトップ版.md`](docs/デスクトップ版.md)。
@@ -52,7 +54,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.1.0 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] ログ 接続OK [終了]
+上の帯   コイル梱包ツール VER1.2.0 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] 説明書 ログ 接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
@@ -85,6 +87,7 @@ common/                             3機能で共有する入れ物
 templates/base.html  index.html     統合画面の外枠とタブ
 static/css/shell.css  js/shell.js   外枠だけの CSS / JS(心拍・タブ・終了)
 static/js/desktop.js                デスクトップ版だけで差し込む(別窓・アプリの外のリンク・窓を閉じる)
+templates/manual/  static/manual/   操作説明書(4冊の HTML と写真。common/manual.py が /manual/ で出す)
 modules/
   packing_details/                  梱包明細   (meisai/ + app/ + config/ + docs/ + tests/)
   packing_pena_label/               ペナラベル (app/ + server.py〈Flask への取り次ぎ〉+ data/ + assets/ + tests/)
@@ -93,6 +96,7 @@ tests/                              統合の試験(タブ・入口・トーク�
 tools/smoke_shell.py                起動から停止までの通し(手動)
 tools/e2e_scenarios.py              3機能を現場と同じように使う通し(一連の流れ・交互・放置。手動)
 tools/desktop_e2e.py                デスクトップ版の窓を操作する通し(開発機の Linux。手動)
+tools/make_manual_shots.py          操作説明書の写真を撮る(試験用のデータで本物の画面を撮り、丸数字を描き込む)
 scripts/make_dist.py                配布用フォルダを作る(デスクトップ版の exe も入れる)
 scripts/desktop_smoke.py            exe を起動して、画面が届く・待ち受けない・止めたら Python も終わるを確かめる
 docs/統合設計.md                    調査・比較・採用した実装・影響・テスト
@@ -159,7 +163,7 @@ docs/デスクトップ版.md              デスクトップ版の作り・動�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.1.0 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
+| コイル梱包ツール(統合ツール) | 1.2.0 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
 | 梱包明細 | 0.13.12 | `modules/packing_details/config/app.json` |
 | ペナラベル | 1.5.13 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
 | 資材計算 | 0.2.12 | `modules/packing_material_calculation/config/app.json` |
@@ -204,9 +208,9 @@ python tools/print_edge_check.py
 python -m unittest discover -s modules/packing_details/tests -t .        # 梱包明細   488
 python -m unittest discover -s modules/packing_pena_label/tests -t .     # ペナラベル 605
 python -m pytest modules/packing_material_calculation/tests              # 資材計算   442
-python -m pytest tests                                                   # 統合       276
+python -m pytest tests                                                   # 統合       289
 python tools/smoke_shell.py                                              # 通し(配布前に一度)
-python tools/e2e_scenarios.py                                           # 3機能の一連の流れ・印刷する・交互・保存先・マスタ管理・後追い・配色・放置(約20分。--quick で約9分)
+python tools/e2e_scenarios.py                                           # 3機能の一連の流れ・印刷する・交互・保存先・マスタ管理・後追い・配色・説明書・放置(約20分。--quick で約9分)
 python tools/print_edge_check.py                                         # 印刷の端 5mm(紙面を直したら)
 cd src-tauri && cargo test                                               # デスクトップ版の外枠(Rust)
 python tools/desktop_e2e.py --exe src-tauri/target/debug/CoilPackingTools   # デスクトップ版の窓の通し(Linux)
@@ -219,6 +223,24 @@ exe の作成・exe を起動しての確認(`scripts/desktop_smoke.py`)を push
 そのうち画面・API を叩く試験は、統合の試験(`tests/test_modules_mounted.py`)が
 **統合アプリに入口とトークン付きで載せた形**でもう一度流します(`tools/pytest_mounted.py`)。
 統合前後の件数と結果は `docs/統合設計.md` §6。
+
+## 操作説明書
+
+統合画面の上の帯の **「説明書」** を押すと、いま見ているタブのツールの説明書(写真入りの HTML)が
+ダイアログで開きます。**ダウンロードにはしません**(そのまま読む・「別の窓で開く」・「印刷する」)。
+
+| 冊 | 中身 |
+|---|---|
+| はじめに・統合画面 | 起動と終了・画面の見方・タブ・版の見方・画面の色・ログ・困ったとき |
+| 梱包明細 | ロット → 重量 → 積み → 出力 → 印刷、履歴から作り直す、設定、確かめの窓 |
+| ペナラベル | 重量反映 → 重量計算_DB → 小ラベル印刷、風袋計算、全サイズ、印刷の位置合わせ、設定 |
+| 資材計算 | 計算 → チェックリスト → 発注票、取り込み、マスタ管理、ラインと担当者 |
+
+- どの冊にも、いま動いている版(統合ツールとそのツール)が出ます。写真を撮った版と違えば断り書きが出ます
+- 写真は `python tools/make_manual_shots.py` が試験用のデータで本物の画面を撮ります(手で切り抜かない)。
+  **画面を変えたら撮り直します**(`--only details` などで1冊ぶんだけも撮れます)
+- 試験: `tests/test_manual.py`(4冊が開く・版・写真がそろう・使っていない写真が無い)、
+  `tools/e2e_scenarios.py --only manual`(実ブラウザで開く・別の窓・ダウンロードにならない)
 
 ## 配布
 

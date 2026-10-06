@@ -1,0 +1,196 @@
+{
+ "taken": "2026-10-06",
+ "versions": {
+  "app": "1.2.0",
+  "details": "0.13.12",
+  "material": "0.2.12",
+  "pena": "1.5.13"
+ },
+ "images": {
+  "details-about": {
+   "w": 1280,
+   "h": 696
+  },
+  "details-history": {
+   "w": 1280,
+   "h": 818
+  },
+  "details-lot": {
+   "w": 1280,
+   "h": 460
+  },
+  "details-output": {
+   "w": 1280,
+   "h": 818
+  },
+  "details-ready": {
+   "w": 1280,
+   "h": 690
+  },
+  "details-report": {
+   "w": 1280,
+   "h": 900
+  },
+  "details-settings": {
+   "w": 1280,
+   "h": 818
+  },
+  "details-settings-qa": {
+   "w": 1280,
+   "h": 818
+  },
+  "details-settings-store": {
+   "w": 1280,
+   "h": 818
+  },
+  "details-stack": {
+   "w": 1280,
+   "h": 690
+  },
+  "details-start": {
+   "w": 1280,
+   "h": 213
+  },
+  "details-weights": {
+   "w": 1280,
+   "h": 460
+  },
+  "material-about": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-add": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-checklist": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-checklist-print": {
+   "w": 1280,
+   "h": 900
+  },
+  "material-import": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-input": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-master": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-master-row": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-order": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-order-print": {
+   "w": 1280,
+   "h": 900
+  },
+  "material-result": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-settings": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-spec": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-start": {
+   "w": 1280,
+   "h": 818
+  },
+  "material-team": {
+   "w": 1280,
+   "h": 818
+  },
+  "pena-allsize": {
+   "w": 1280,
+   "h": 818
+  },
+  "pena-allsize-print": {
+   "w": 1280,
+   "h": 900
+  },
+  "pena-calibration": {
+   "w": 1280,
+   "h": 900
+  },
+  "pena-calibration-fix": {
+   "w": 1280,
+   "h": 900
+  },
+  "pena-labels-print": {
+   "w": 1280,
+   "h": 900
+  },
+  "pena-labels-print-note": {
+   "w": 1280,
+   "h": 900
+  },
+  "pena-settings": {
+   "w": 1280,
+   "h": 818
+  },
+  "pena-settings-storage": {
+   "w": 1280,
+   "h": 818
+  },
+  "pena-start": {
+   "w": 1280,
+   "h": 818
+  },
+  "pena-tare": {
+   "w": 1280,
+   "h": 818
+  },
+  "pena-tare-print": {
+   "w": 1280,
+   "h": 900
+  },
+  "pena-tare-view": {
+   "w": 1280,
+   "h": 818
+  },
+  "pena-weight": {
+   "w": 1280,
+   "h": 818
+  },
+  "shell-log": {
+   "w": 1280,
+   "h": 900
+  },
+  "shell-manual": {
+   "w": 1280,
+   "h": 900
+  },
+  "shell-overview": {
+   "w": 1280,
+   "h": 295
+  },
+  "shell-tabs": {
+   "w": 1280,
+   "h": 116
+  },
+  "shell-theme-dark": {
+   "w": 1280,
+   "h": 294
+  },
+  "shell-versions": {
+   "w": 1280,
+   "h": 295
+  }
+ },
+ "note": "tools/make_manual_shots.py が撮った写真の控え。手で直さない"
+}

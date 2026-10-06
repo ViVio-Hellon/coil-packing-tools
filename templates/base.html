@@ -60,6 +60,10 @@
                 title="{{ hint }}(3機能共通・このPCに保存。紙は白地のまま)">{{ label }}</button>
         {% endfor %}
       </div>
+      {# 操作説明書(統合 1.2.0)。いま見ているタブのツールの説明書(写真入り)を開く。
+         ダウンロードにしない(このまま画面で読む・別の窓で開く・印刷する) #}
+      <button class="btn btn--bar" type="button" id="manualBtn" aria-haspopup="dialog"
+              title="操作説明書(写真入り)。いま見ているタブのツールの説明書が開きます">説明書</button>
       {# ログとエラーの記録(3機能共通)。出力先の設定・エラーの一覧(なぜなぜ分析用) #}
       <button class="btn btn--bar" type="button" id="logBtn" aria-haspopup="dialog"
               title="ログとエラーの記録(出力先の設定・エラーの一覧)">ログ</button>
@@ -92,6 +96,18 @@
   </div>
   {# 中身(iframe)は開いたときに作る(開かないうちは読みに行かない) #}
   <div class="logdlg__body" id="logBody"></div>
+</dialog>
+{# 操作説明書。中身は /manual/<機能>(manual/*.html)。開いたときに読む #}
+<dialog class="logdlg manualdlg" id="manualDialog" aria-label="操作説明書">
+  <div class="logdlg__head">
+    <b>操作説明書</b><span>写真入り・{{ display_name }}</span>
+    <span class="manualdlg__btns">
+      <button class="btn" type="button" id="manualPop"
+              title="説明書を別の窓(ブラウザでは別のタブ)で開きます。画面と並べて読めます">別の窓で開く</button>
+      <button class="btn" type="button" id="manualClose">閉じる</button>
+    </span>
+  </div>
+  <div class="logdlg__body" id="manualBody"></div>
 </dialog>
 <script>
   window.SHELL = {

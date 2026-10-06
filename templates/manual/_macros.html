@@ -1,0 +1,40 @@
+{#
+  説明書の部品。`{% import "manual/_macros.html" as m with context %}` で使う
+  (写真の控え `images` を見るため with context)。
+#}
+
+{#- 写真。名前は static/manual/img/<名前>.png(tools/make_manual_shots.py が撮る) -#}
+{% macro fig(name, caption, cls="") -%}
+{%- set im = images.get(name) -%}
+<figure class="shot {{ cls }}" id="fig-{{ name }}">
+  {%- if im %}
+  <img src="{{ url_for('static', filename='manual/img/' ~ name ~ '.png') }}"
+       width="{{ im.w }}" height="{{ im.h }}" alt="{{ caption|striptags }}">
+  {%- else %}
+  <div class="noshot">写真はまだ撮っていません({{ name }})</div>
+  {%- endif %}
+  <figcaption>{{ caption }}</figcaption>
+</figure>
+{%- endmacro %}
+
+{#- 写真の中の丸数字と同じ番号 -#}
+{% macro n(i) %}<span class="n" aria-label="{{ i }}番">{{ i }}</span>{% endmacro %}
+
+{#- 画面のボタン・項目の名前(画面に出ている文字のまま) -#}
+{% macro b(label) %}<span class="btnlabel">{{ label }}</span>{% endmacro %}
+
+{#- 版のキー → 名前 -#}
+{% macro vlabel(key) -%}
+{%- for item in manuals if item.version_key == key -%}
+{{ display_name if key == 'app' else item.title }}
+{%- endfor -%}
+{%- endmacro %}
+
+{#- この冊の頭: 見出しと、いま動いている版 -#}
+{% macro heading(title) -%}
+<h1>{{ title }}
+  {%- if manual and manual.version_key != 'app' %}
+  <span class="vbadge" title="いま動いている{{ manual.title }}の版">VER{{ manual.version }}</span>
+  {%- endif %}
+</h1>
+{%- endmacro %}
