@@ -205,7 +205,12 @@ def shell_scene(app, ctx, sh, cam):
     pg.wait_for_timeout(1500)
     cam.take("shell-log", pg, marks=[(1, box_of(pg, "#logClose"), "l")])
     pg.click("#logClose")
-    # 説明書(いま見ているタブのツールの説明書が開く)
+
+
+def shell_manual_shot(app, ctx, sh, cam):
+    """説明書のダイアログ。**最後に撮る** ── 写真の中の説明書に、この回に撮った写真が写るように。"""
+    pg = sh.page
+    sh.tab("details")
     pg.click("#manualBtn")
     pg.wait_for_selector("#manualDialog[open]")
     pg.wait_for_timeout(1500)
@@ -563,6 +568,9 @@ def main(argv=None) -> int:
             for key in keys:
                 print(f"■ {key}", flush=True)
                 SCENES[key](app, ctx, sh, cam)
+            if "shell" in keys:
+                write_meta(cam, versions, merge=True)      # 説明書が今回の写真を出すように先に書く
+                shell_manual_shot(app, ctx, sh, cam)
             browser.close()
     finally:
         app.stop()
