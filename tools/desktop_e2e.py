@@ -288,10 +288,25 @@ class Rig:
                 self.driver.kill()
         self.driver = None
 
-    @staticmethod
-    def exe_pids() -> dict:
-        """動いている exe: pid → (親, 起動した時刻, 名前)。生きているかは `running` で見る。"""
-        return {p: v for p, v in processes().items() if v[2].startswith("CoilPacking")}
+    def exe_pids(self) -> dict:
+        """動いている exe: pid → (親, 起動した時刻, 名前)。生きているかは `running` で見る。
+
+        名前ではなく**実行ファイルの場所**で見分ける(配る名前は「コイル梱包ツール.exe」。
+        Linux のプロセス名は15バイトで切れる)。
+        """
+        procs = processes()
+        if WINDOWS:
+            name = Path(self.exe).name.lower()
+            return {p: v for p, v in procs.items() if v[2].lower() == name}
+        target = os.path.realpath(self.exe)
+        found = {}
+        for p, v in procs.items():
+            try:
+                if os.readlink(f"/proc/{p}/exe").replace(" (deleted)", "") == target:
+                    found[p] = v
+            except OSError:
+                pass
+        return found
 
     @staticmethod
     def running(procs: dict) -> list:

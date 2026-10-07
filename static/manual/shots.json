@@ -1,10 +1,10 @@
 {
  "taken": "2026-10-07",
  "versions": {
-  "app": "1.2.1",
-  "details": "0.13.13",
-  "material": "0.2.12",
-  "pena": "1.5.13"
+  "app": "1.2.2",
+  "details": "0.13.14",
+  "material": "0.2.13",
+  "pena": "1.5.14"
  },
  "images": {
   "details-about": {
@@ -177,7 +177,7 @@
   },
   "shell-overview": {
    "w": 1280,
-   "h": 772
+   "h": 295
   },
   "shell-tabs": {
    "w": 1280,
@@ -185,7 +185,7 @@
   },
   "shell-theme-dark": {
    "w": 1280,
-   "h": 771
+   "h": 294
   },
   "shell-versions": {
    "w": 1280,
