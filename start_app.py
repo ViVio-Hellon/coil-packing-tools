@@ -651,6 +651,8 @@ def start_bridge(mode: str, *, token: str = "", server_factory) -> int:
                 f"統合前の単体版が動いています: {names}",
                 "単体版の画面を閉じるか、単体版のフォルダの stop.bat で止めてから、"
                 "もう一度開いてください。")
+        # ブラウザ版が見る印(Python の側)。exe の錠と2つで見る(`launch_guard.desktop_running`)
+        launch_guard.hold_desktop_lock()
     srv = server_factory(mode, token or secrets.token_urlsafe(24))
     thread = server_module.run_in_background(srv)
     log().info("待機画面まで %.2f秒(デスクトップ版)", time.monotonic() - _BOOT_AT)
@@ -757,7 +759,7 @@ def report_failure(error: StartupError, *, open_browser: bool) -> None:
 
     try:
         from common import app_config
-        log_dir = str(app_config.local_dir("logs"))
+        log_dir = app_config.real_location(app_config.local_dir("logs"))
     except Exception:                             # noqa: BLE001 - 失敗の報告で失敗しない
         log_dir = "(ローカル領域を特定できませんでした)"
 
@@ -770,7 +772,10 @@ def report_failure(error: StartupError, *, open_browser: bool) -> None:
         return
     try:
         path = _write_error_page(str(error), error.hint, log_dir)
-        webbrowser.open(path.as_uri())
+        # ブラウザは Python の外。Microsoft Store の Python が置き換えた先を渡さないと
+        # 「ファイルが見つかりません」になる(`app_config.real_location`)
+        from common import app_config
+        webbrowser.open(Path(app_config.real_location(path)).as_uri())
     except Exception as exc:                      # noqa: BLE001
         print(f"(エラー画面を出せませんでした: {exc})", file=sys.stderr)
 

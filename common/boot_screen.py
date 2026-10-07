@@ -260,7 +260,7 @@ def render(*, display_name: str, version_label: str, token: str, app_id: str,
   <div class="trouble" id="trouble" hidden>
     <h2 id="troubleTitle">起動できませんでした</h2>
     <p id="troubleBody"></p>
-    <p style="margin-top:8px">ログ: <code>%LOCALAPPDATA%\\CoilPackingTools\\logs\\</code></p>
+    <p style="margin-top:8px">ログ: <code>{_esc(_log_location())}</code></p>
   </div>
 </main>
 <script>{_SCRIPT}</script>
@@ -374,6 +374,15 @@ function bootWatch(opt) {
   poll();
 }
 """
+
+
+def _log_location() -> str:
+    """ログの実際の場所(Microsoft Store の Python は別の場所に置く。`app_config.real_location`)。"""
+    try:
+        from . import app_config, logging_utils
+        return app_config.real_location(logging_utils.log_dir())
+    except Exception:                             # noqa: BLE001 - 画面を出すのを止めない
+        return "%LOCALAPPDATA%\\CoilPackingTools\\logs\\"
 
 
 def _esc(text: str) -> str:

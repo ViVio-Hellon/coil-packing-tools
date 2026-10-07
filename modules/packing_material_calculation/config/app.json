@@ -1,7 +1,7 @@
 {
   "app_id": "nlm.coil-material-tool",
   "display_name": "コイル梱包資材計算ツール",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "monitor_level": 1,
   "local_dir_name": "CoilMaterialTool",
   "server": {

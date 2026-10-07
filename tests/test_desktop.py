@@ -100,6 +100,34 @@ class DesktopLockTest(unittest.TestCase):
             launch_guard._unlock(held)
         self.assertFalse(launch_guard.desktop_running(), "落ちれば OS が外す(印が残っても惑わない)")
 
+    def test_the_python_side_lock_also_means_running(self):
+        """デスクトップ版の Python も印を握る(統合 1.2.1)。exe の錠が見えなくても見分ける。
+
+        Microsoft Store の Python は %LOCALAPPDATA% の下のファイルを自分だけの場所に置き換える
+        ことがあり、exe(Python の外)の錠と Python が見る錠が別のファイルになりうる。
+        Python どうしは同じ場所を見るので、こちらは必ず見分けられる。
+        """
+        self.addCleanup(launch_guard.release_desktop_lock)
+        self.assertTrue(launch_guard.hold_desktop_lock())
+        self.assertFalse(self.lock.exists(), "exe の錠は無い")
+        self.assertTrue(launch_guard.desktop_running())
+        launch_guard.release_desktop_lock()
+        self.assertFalse(launch_guard.desktop_running())
+
+    def test_the_desktop_python_holds_its_lock_before_building(self):
+        self.addCleanup(launch_guard.release_desktop_lock)
+        guard = mock.Mock(should_start=True, reason="ロックなし")
+
+        def factory(*_args, **_kwargs):
+            self.assertTrue(launch_guard.desktop_running(), "組み立てる前に印を握っている")
+            raise RuntimeError("ここまで")
+
+        with mock.patch.object(launch_guard, "check_existing", return_value=guard), \
+                mock.patch.object(launch_guard, "find_legacy_instances", return_value=[]), \
+                mock.patch.object(start_app, "log_environment"):
+            with self.assertRaises(RuntimeError):
+                start_app.start_bridge("main", token="t", server_factory=factory)
+
     def test_browser_version_refuses_while_the_desktop_runs(self):
         guard = mock.Mock(should_start=True, reason="ロックなし")
         with mock.patch.object(launch_guard, "check_existing", return_value=guard), \

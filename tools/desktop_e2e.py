@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""デスクトップ版(exe)を窓の中で操作する通し試験(開発用の PC・Linux)
+"""デスクトップ版(exe)を窓の中で操作する通し試験(Linux の開発機・GitHub Actions の Windows)
 
     python tools/desktop_e2e.py --exe <CoilPackingTools のパス>
 
-ブラウザ版の通し試験(`tools/e2e_scenarios.py`)のデスクトップ版。本物の exe を
-仮想画面(Xvfb)で起動し、WebDriver(tauri-driver + WebKitWebDriver)で窓を操作する。
+ブラウザ版の通し試験(`tools/e2e_scenarios.py`)のデスクトップ版。本物の exe を起動し、
+WebDriver(tauri-driver)で窓を操作する。
+    Linux   … 仮想画面(Xvfb)+ WebKitWebDriver(窓は WebKitGTK)
+    Windows … Microsoft Edge WebDriver(msedgedriver)(窓は**現場と同じ WebView2**)
 試験用の取り込み元は `e2e_scenarios.make_sources` と同じものを作る。
 
 【確かめること】
@@ -24,9 +26,13 @@
    デスクトップ版が動いているあいだ、ブラウザ版は起動しない
 
 【要るもの】(現場の PC には要らない)
-    Xvfb・WebKitWebDriver(webkit2gtk-driver)・tauri-driver(cargo install tauri-driver)
+    共通    tauri-driver(cargo install tauri-driver)
+    Linux   Xvfb・xdotool・WebKitWebDriver(webkit2gtk-driver)
+    Windows msedgedriver(WebView2 と同じ版。`--native-driver` か環境変数 MSEDGEDRIVER で場所を渡す)
     exe は `cd src-tauri && cargo build`(target/debug/CoilPackingTools)
-Windows の exe は GitHub Actions が `scripts/desktop_smoke.py` で確かめる。
+Windows では GitHub Actions が、作った exe でこの試験を流す(`.github/workflows/desktop-windows.yml`)。
+確かめの窓(confirm)が WebView2 で本当に出て、「キャンセル」で止まることもここで分かる
+(別のリポジトリでは、デスクトップ版で確かめの窓が出ずに「OK」扱いで進む不具合があった)。
 """
 from __future__ import annotations
 
@@ -51,21 +57,25 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import e2e_scenarios as E  # noqa: E402
-from desktop_smoke import children, listening_ports  # noqa: E402
+from desktop_smoke import children, listening_ports, processes, still_running  # noqa: E402
 
 ELEM = "element-6066-11e4-a52e-4f735466cecf"
 WD_PORT = 4444                               # 試験の道具だけが使う(アプリは使わない)
 TITLE = "コイル梱包ツール"                      # 外枠の窓の名前(src-tauri/src/main.rs の TITLE)
+WINDOWS = os.name == "nt"
 results: list = []
 
 
 def press_close_button(display: str, title: str) -> int:
-    """窓の × を押したのと同じ合図(WM_DELETE_WINDOW)を X に送る。送った窓の数を返す。
+    """窓の × を押したのと同じ合図を送る。送った窓の数を返す。
 
     WebDriver の「窓を閉じる」は WebView を直接閉じるので、外枠の「閉じてよいか」
-    (CloseRequested)を通らない。本物の × と同じ道を通すため、ウィンドウマネージャが
-    送るのと同じ ClientMessage を ctypes で送る(Xvfb にはウィンドウマネージャが無い)。
+    (CloseRequested)を通らない。本物の × と同じ道を通すため、
+    Linux はウィンドウマネージャが送るのと同じ ClientMessage(WM_DELETE_WINDOW)を、
+    Windows は × を押したときに窓へ届くのと同じ WM_CLOSE を ctypes で送る。
     """
+    if WINDOWS:
+        return _press_close_windows(title)
     found = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", f"^{title}$"],
                            env=dict(os.environ, DISPLAY=display),
                            capture_output=True, text=True).stdout.split()
@@ -108,6 +118,31 @@ def press_close_button(display: str, title: str) -> int:
         x11.XFlush(dpy)
     finally:
         x11.XCloseDisplay(dpy)
+    return len(found)
+
+
+def _press_close_windows(title: str) -> int:
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def each(hwnd, _param):
+        if user32.IsWindowVisible(hwnd):
+            size = user32.GetWindowTextLengthW(hwnd)
+            buf = ctypes.create_unicode_buffer(size + 1)
+            user32.GetWindowTextW(hwnd, buf, size + 1)
+            if buf.value == title:
+                found.append(hwnd)
+        return True
+
+    user32.EnumWindows(each, 0)
+    for hwnd in found:
+        user32.PostMessageW(hwnd, 0x0010, 0, 0)    # WM_CLOSE
     return len(found)
 
 
@@ -216,14 +251,17 @@ class Window:
 class Rig:
     """仮想画面・tauri-driver・試験用の置き場所。"""
 
-    def __init__(self, exe: str, display: str, shots: Path):
+    def __init__(self, exe: str, display: str, shots: Path, native_driver: str):
         self.exe, self.display, self.shots = exe, display, shots
+        self.native_driver = native_driver
         self.home = Path(tempfile.mkdtemp(prefix="cpt-desk-e2e-"))
         E.make_sources(self.home)
         self.app = E.App(self.home)               # ブラウザ版と同じ置き場所・取り込み元
-        self.xvfb = subprocess.Popen(["Xvfb", display, "-screen", "0", "1600x1000x24"],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(1)
+        self.xvfb = None
+        if not WINDOWS:
+            self.xvfb = subprocess.Popen(["Xvfb", display, "-screen", "0", "1600x1000x24"],
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
         self.driver = None
 
     def env(self, **extra):
@@ -236,7 +274,7 @@ class Rig:
     def start_driver(self, **extra):
         self.stop_driver()
         self.driver = subprocess.Popen(
-            ["tauri-driver", "--port", str(WD_PORT), "--native-driver", shutil.which("WebKitWebDriver")],
+            ["tauri-driver", "--port", str(WD_PORT), "--native-driver", self.native_driver],
             env=self.env(**extra), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         until(lambda: urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
             f"http://127.0.0.1:{WD_PORT}/status", timeout=2), 15)
@@ -250,12 +288,25 @@ class Rig:
                 self.driver.kill()
         self.driver = None
 
-    def exe_pids(self):
-        return [int(p) for p in os.listdir("/proc") if p.isdigit()
-                and Path(f"/proc/{p}/comm").exists()
-                and Path(f"/proc/{p}/comm").read_text().strip().startswith("CoilPacking")]
+    @staticmethod
+    def exe_pids() -> dict:
+        """動いている exe: pid → (親, 起動した時刻, 名前)。生きているかは `running` で見る。"""
+        return {p: v for p, v in processes().items() if v[2].startswith("CoilPacking")}
 
-    def bridge_pids(self):
+    @staticmethod
+    def running(procs: dict) -> list:
+        """`procs` のうち、まだ動いているもの(番号の使い回しは別のプロセスとみなす)。"""
+        return still_running(procs, list(procs))
+
+    @staticmethod
+    def bridge_pids():
+        if WINDOWS:
+            script = ("Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | "
+                      "ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }")
+            out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                                 capture_output=True, text=True, errors="replace").stdout
+            return [int(line.split("|", 1)[0]) for line in out.splitlines()
+                    if "bridge.py" in line and line.split("|", 1)[0].strip().isdigit()]
         out = []
         for p in os.listdir("/proc"):
             if p.isdigit():
@@ -272,7 +323,8 @@ class Rig:
 
     def close(self):
         self.stop_driver()
-        self.xvfb.terminate()
+        if self.xvfb:
+            self.xvfb.terminate()
 
 
 # ======================================================================
@@ -522,12 +574,12 @@ def scenario_main(rig: Rig):
         dismissed = w.dismiss()
         time.sleep(1.5)
         check("「終了」の確かめで「キャンセル」なら終わらない",
-              dismissed and all(Path(f"/proc/{p}").exists() for p in exe)
-              and w.text("#conn") == "接続OK", w.text("#conn"))
+              dismissed and exe and len(rig.running(exe)) == len(exe)
+              and w.text("#conn") == "接続OK", {"確かめ": dismissed, "接続": w.text("#conn")})
         w.click("#quit")
         time.sleep(0.8)
         w.accept()
-        gone = until(lambda: not any(Path(f"/proc/{p}").exists() for p in exe), 15)
+        gone = until(lambda: not rig.running(exe), 15)
         check("「終了」で exe も Python も終わる", gone and not rig.bridge_pids(), rig.bridge_pids())
     finally:
         w.end()
@@ -551,18 +603,18 @@ def scenario_close_and_second(rig: Rig):
             second.kill()
             code = "終わらない"
         check("2つ目の exe は起動せずに終わる", code == 0, code)
-        check("1つ目はそのまま使える", all(Path(f"/proc/{p}").exists() for p in first)
+        check("1つ目はそのまま使える", first and len(rig.running(first)) == len(first)
               and w.text("#conn") == "接続OK", w.text("#conn"))
         # 窓の ×: 統合画面の「終了」と同じ確かめ(キャンセルなら残る・OK で終わる)
         sent = press_close_button(rig.display, TITLE)
         dismissed = until(w.dismiss, 10)
         time.sleep(4.0)                           # 外枠は3秒待って、受け取られなければ終える
         check("窓の × で確かめが出て「キャンセル」なら終わらない",
-              dismissed and all(Path(f"/proc/{p}").exists() for p in first)
+              dismissed and len(rig.running(first)) == len(first)
               and w.text("#conn") == "接続OK", {"送った窓": sent, "確かめ": dismissed})
         sent = press_close_button(rig.display, TITLE)
         accepted = until(w.accept, 10)
-        gone = until(lambda: not any(Path(f"/proc/{p}").exists() for p in first), 15)
+        gone = until(lambda: not rig.running(first), 15)
         check("窓の × で「OK」なら exe も Python も終わる",
               accepted and gone and not rig.bridge_pids(),
               {"確かめ": accepted, "残り": rig.bridge_pids()})
@@ -579,7 +631,8 @@ def scenario_ports(rig: Rig):
     try:
         seen = until(lambda: '"GET /details/meisai' in rig.log_text()[mark:], 60)
         check("画面が Python から届く(統合画面の中の梱包明細まで)", seen)
-        tree = {proc.pid, *children(proc.pid)}
+        before = processes()
+        tree = {proc.pid, *children(proc.pid, before)}
         ports = listening_ports(tree)
         check("どのプロセスもポートで待ち受けない(exe・Python・窓)", tree and not ports,
               {"プロセス": len(tree), "待ち受け": ports})
@@ -587,7 +640,7 @@ def scenario_ports(rig: Rig):
     finally:
         proc.terminate()
         proc.wait(timeout=30)
-    left = until(lambda: not any(Path(f"/proc/{p}").exists() for p in others), 20)
+    left = until(lambda: not still_running(before, others), 20)
     check("exe を止めたら Python も終わる(取り残さない)", left)
     assert work_log
 
@@ -640,14 +693,22 @@ def main(argv=None) -> int:
     ap.add_argument("--only", choices=("main", "close", "ports", "failures"))
     ap.add_argument("--shots", default="", help="画面の写しを置くフォルダ")
     ap.add_argument("--display", default=":97")
+    ap.add_argument("--native-driver", default="",
+                    help="WebKitWebDriver(Linux)/ msedgedriver(Windows)の場所")
     args = ap.parse_args(argv)
-    for tool in ("Xvfb", "tauri-driver", "WebKitWebDriver"):
+    native = (args.native_driver or os.environ.get("MSEDGEDRIVER" if WINDOWS else "WEBKITWEBDRIVER", "")
+              or shutil.which("msedgedriver" if WINDOWS else "WebKitWebDriver") or "")
+    tools = ("tauri-driver",) if WINDOWS else ("Xvfb", "xdotool", "tauri-driver")
+    for tool in tools:
         if not shutil.which(tool):
             print(f"{tool} がありません(説明はこの台本の先頭)")
             return 2
+    if not native or not Path(native).exists():
+        print(f"{'msedgedriver' if WINDOWS else 'WebKitWebDriver'} がありません(説明はこの台本の先頭)")
+        return 2
     shots = Path(args.shots) if args.shots else Path(tempfile.mkdtemp(prefix="cpt-desk-shots-"))
     shots.mkdir(parents=True, exist_ok=True)
-    rig = Rig(str(Path(args.exe).resolve()), args.display, shots)
+    rig = Rig(str(Path(args.exe).resolve()), args.display, shots, native)
     print("=" * 80)
     print("置き場所:", rig.home)
     try:

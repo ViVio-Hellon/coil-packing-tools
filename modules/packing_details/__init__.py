@@ -80,8 +80,15 @@ def initialize(report) -> Optional[threading.Event]:
     try:
         report.stage(f"{LABEL}: アプリを準備中")
         config.ensure_dirs()
-        with db.connect() as conn:
-            db.apply_schema(conn)
+
+        def prepare() -> None:
+            with db.connect() as conn:
+                db.apply_schema(conn)
+
+        # 手元のDBが壊れていたら、横へ退けて(消さずに)作り直す(統合 1.2.1)
+        from common import db_recover
+        if db_recover.open_or_rebuild(config.DB_PATH, LABEL, log, prepare):
+            report.stage(f"{LABEL}: 手元のDBが壊れていたので作り直しました(取り込み直します)")
     except Exception as exc:                      # noqa: BLE001 - 画面に出して継続
         log.exception("初期化に失敗しました")
         report.error(f"{LABEL}: 初期化に失敗しました: {exc}")

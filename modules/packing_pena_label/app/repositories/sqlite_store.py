@@ -133,7 +133,19 @@ class Store:
         self._shutdown = threading.Event()
         self._janitor: Optional[threading.Thread] = None
 
-        self._exec_script(_SCHEMA)
+        # 状態DB が壊れていたら、横へ退けて(消さずに)作り直す(統合 1.2.1。
+        # 壊れていると統合アプリごと起動しなかった)
+        from common import db_recover
+
+        def prepare() -> None:
+            try:
+                self._exec_script(_SCHEMA)
+            except BaseException:
+                with self._lock:                  # Windows は開いているファイルを動かせない
+                    self._close_locked()
+                raise
+
+        db_recover.open_or_rebuild(db_path, "ペナラベル", log, prepare)
 
         if self.idle_close_sec > 0:
             self._janitor = threading.Thread(
@@ -149,12 +161,16 @@ class Store:
             check_same_thread=False,          # 1本をロックで直列化して共有する
             isolation_level="DEFERRED",
         )
-        c.row_factory = sqlite3.Row
-        # WAL は使わない（-wal/-shm を作らず、ネットワーク FS でも壊れにくい）
-        c.execute("PRAGMA journal_mode=DELETE")
-        c.execute("PRAGMA synchronous=FULL")
-        c.execute("PRAGMA busy_timeout=%d" % self.busy_timeout_ms)
-        c.execute("PRAGMA foreign_keys=ON")
+        try:
+            c.row_factory = sqlite3.Row
+            # WAL は使わない（-wal/-shm を作らず、ネットワーク FS でも壊れにくい）
+            c.execute("PRAGMA journal_mode=DELETE")
+            c.execute("PRAGMA synchronous=FULL")
+            c.execute("PRAGMA busy_timeout=%d" % self.busy_timeout_ms)
+            c.execute("PRAGMA foreign_keys=ON")
+        except BaseException:
+            c.close()                             # 開きかけで落ちたら閉じてから投げる(Windows)
+            raise
         log.debug("状態DB を開きました: %s", self.db_path)
         return c
 
@@ -280,8 +296,10 @@ class Store:
             open_now = self._conn is not None
             idle = (time.monotonic() - self._last_used) if self._last_used else None
         size = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+        from common import app_config
         return {
-            "path": self.db_path,
+            # 画面に出す場所は実際に置かれている場所(Microsoft Store の Python。統合 1.2.2)
+            "path": app_config.real_location(self.db_path),
             "open": open_now,
             "idleSec": round(idle, 1) if idle is not None else None,
             "idleCloseSec": self.idle_close_sec,

@@ -151,16 +151,31 @@ def _unlock(handle) -> None:
 #: デスクトップ版(exe)が動いているあいだ握っている錠(`src-tauri/src/main.rs` の
 #: `take_instance_lock`)。ローカル領域の runtime の下
 DESKTOP_LOCK_NAME = "desktop.lock"
+#: デスクトップ版の **Python** が動いているあいだ握っている錠(`hold_desktop_lock`。統合 1.2.1)
+DESKTOP_PY_LOCK_NAME = "desktop-python.lock"
+
+#: `hold_desktop_lock` が握っている錠(プロセスが終われば OS が外す)
+_desktop_hold = None
 
 
 def desktop_running() -> bool:
     """デスクトップ版(コイル梱包ツール.exe)が動いているか。
 
-    exe は動いているあいだ `runtime/desktop.lock` を OS のロックで握っている
-    (落ちれば OS が外すので、残った印に惑わされない)。締められたら動いていない。
+    exe は動いているあいだ `runtime/desktop.lock` を、exe が起こした Python は
+    `runtime/desktop-python.lock` を OS のロックで握っている(落ちれば OS が外すので、
+    残った印に惑わされない)。どちらかが締められなければ動いている。
     **ブラウザ版とデスクトップ版は同時に動かさない**(同じ手元のDB・作業状態を使う)。
+
+    【2つ見る理由】Microsoft Store の Python は `%LOCALAPPDATA%` の下のファイルを自分だけの
+    場所に置き換えることがあり、exe(Python の外)と Python とで**同じ名前でも別のファイルを
+    見る**ことがある。Python どうし(ブラウザ版とデスクトップ版の Python)は同じ場所を見るので、
+    Python の錠も握っておけば、置き換えがどう働いても取り違えない。
     """
-    path = app_config.local_dir("runtime") / DESKTOP_LOCK_NAME
+    folder = app_config.local_dir("runtime")
+    return any(_held_by_other(folder / name) for name in (DESKTOP_LOCK_NAME, DESKTOP_PY_LOCK_NAME))
+
+
+def _held_by_other(path: Path) -> bool:
     if not path.exists():
         return False
     try:
@@ -171,6 +186,38 @@ def desktop_running() -> bool:
             return True
     except OSError:
         return False
+
+
+def hold_desktop_lock() -> bool:
+    """デスクトップ版の Python が、動いているあいだ `desktop-python.lock` を握る。
+
+    握れたら True。プロセスが終われば OS が外す(残った印で起動できなくなることはない)。
+    """
+    global _desktop_hold
+    if _desktop_hold is not None:
+        return True
+    path = app_config.local_dir("runtime") / DESKTOP_PY_LOCK_NAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(path, "a+b")
+    except OSError as exc:
+        log.warning("デスクトップ版の印を置けませんでした(そのまま続けます): %s", exc)
+        return False
+    if not _try_lock(handle):
+        handle.close()
+        log.warning("デスクトップ版の印をほかが握っています: %s", path)
+        return False
+    _desktop_hold = handle
+    return True
+
+
+def release_desktop_lock() -> None:
+    """試験用(本物はプロセスが終われば外れる)。"""
+    global _desktop_hold
+    if _desktop_hold is not None:
+        _unlock(_desktop_hold)
+        _desktop_hold.close()
+        _desktop_hold = None
 
 
 @contextmanager

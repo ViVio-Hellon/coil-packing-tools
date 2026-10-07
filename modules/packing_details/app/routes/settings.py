@@ -17,6 +17,7 @@ import threading
 
 from flask import Blueprint, Response, jsonify, request
 
+from common import app_config as _common_app_config
 from common import logging_utils as _common_logging
 from common import storage_places
 from modules.packing_details.meisai import (admin_password, config, data_sync, distribution, printing,
@@ -62,9 +63,10 @@ def _local_state() -> dict:
         "export_dir": str(config.export_dir()),
         "export_dir_setting": user_settings.get(config.KEY_EXPORT_DIR, "") or "",
         "export_dir_default": str(config.EXPORT_DIR),
-        "db_path": str(config.DB_PATH),
+        # 画面に出す場所は実際に置かれている場所(Microsoft Store の Python。統合 1.2.2)
+        "db_path": _common_app_config.real_location(config.DB_PATH),
         # いま書いている場所(上の帯の「ログ」で変えられる。統合 1.0.12)
-        "log_dir": str(_common_logging.log_dir()),
+        "log_dir": _common_app_config.real_location(_common_logging.log_dir()),
         # **どのフォルダに何を探しているか**を欄ごとに分けて渡す。
         # まとめて1つの表で渡すと、画面側が「どちらの欄の話か」を
         # 名前から推し量ることになる

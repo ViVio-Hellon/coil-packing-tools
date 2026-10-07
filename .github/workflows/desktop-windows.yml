@@ -10,6 +10,8 @@
 #   - Rust の試験
 #   - 作った exe を本当に起動し、画面が Python から届くこと・ポートで待ち受けないこと・
 #     止めたら Python も終わること(scripts/desktop_smoke.py)
+#   - 窓の通し試験(tools/desktop_e2e.py): WebView2 の窓を WebDriver で操作し、3機能・印刷プレビュー11・
+#     確かめの窓(「キャンセル」で止まる)・窓の × ・2つ目の起動・起動できないときの理由を確かめる
 name: デスクトップ版(Windows)
 
 on:
@@ -77,3 +79,39 @@ jobs:
           name: CoilPackingTools-windows
           path: src-tauri/target/release/CoilPackingTools.exe
           if-no-files-found: error
+
+      # ---- 窓の通し試験(現場と同じ WebView2 の窓を WebDriver で操作する)
+      # 確かめの窓(confirm)が本当に出て「キャンセル」で止まること・印刷プレビューが別の窓で開くこと・
+      # 窓の × ・2つ目の起動 など、Linux の WebKitGTK では分からないことを Windows の窓で確かめる
+      - name: 窓の試験の道具を入れる(tauri-driver・WebView2 と同じ版の msedgedriver)
+        id: wdtools
+        if: (success() || failure()) && steps.build.outcome == 'success'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command tauri-driver -ErrorAction SilentlyContinue)) { cargo install tauri-driver --locked }
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $ver = (Get-ItemProperty $key -ErrorAction SilentlyContinue).pv
+          Write-Host "WebView2: $ver"
+          $driver = ""
+          if ($ver) {
+            try {
+              Invoke-WebRequest "https://msedgedriver.microsoft.com/$ver/edgedriver_win64.zip" -OutFile edgedriver.zip
+              Expand-Archive edgedriver.zip -DestinationPath edgedriver -Force
+              $driver = (Resolve-Path edgedriver\msedgedriver.exe).Path
+            } catch { Write-Host "WebView2 と同じ版の msedgedriver を取れませんでした: $_" }
+          }
+          if (-not $driver -and $env:EDGEWEBDRIVER) { $driver = Join-Path $env:EDGEWEBDRIVER 'msedgedriver.exe' }
+          Write-Host "msedgedriver: $driver"
+          & $driver --version
+          "MSEDGEDRIVER=$driver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: 窓の通し試験(WebView2)
+        if: (success() || failure()) && steps.wdtools.outcome == 'success'
+        run: python tools/desktop_e2e.py --exe src-tauri/target/release/CoilPackingTools.exe --shots desktop-e2e-shots
+
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.wdtools.outcome == 'success'
+        with:
+          name: desktop-e2e-shots
+          path: desktop-e2e-shots
+          if-no-files-found: ignore

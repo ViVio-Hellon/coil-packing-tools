@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List
 
+from . import app_config
+
 LOCAL = "local"
 SHARED = "shared"
 DIST = "dist"
@@ -58,7 +60,7 @@ BADGE = {
 class Place:
     """保存先1つ。"""
     name: str            # 呼び名(設定ファイル・手元のDB…)
-    path: str            # 実際の場所。画面にそのまま出す
+    path: str            # 場所。画面には実際に置かれている場所で出す(`to_dict`)
     holds: str           # 何が入っているか(利用者の言葉で)
     note: str = ""       # 補足(読むだけ・まだ無い…)
 
@@ -75,7 +77,9 @@ class Places:
     def to_dict(self) -> Dict[str, Any]:
         """画面へ渡す形。**見出し・説明も一緒に渡す**(3画面で同じ言葉にする)。"""
         def rows(items: List[Place]) -> List[Dict[str, str]]:
-            return [asdict(p) for p in items]
+            # 画面に出すのは実際に置かれている場所(Microsoft Store の Python は
+            # %LOCALAPPDATA% の下を別の場所に置く。`app_config.real_location`)
+            return [dict(asdict(p), path=app_config.real_location(p.path)) for p in items]
         return {
             "title": TITLE,
             "intro": INTRO,

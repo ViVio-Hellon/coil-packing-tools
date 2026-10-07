@@ -319,6 +319,43 @@ def local_root() -> Path:
     return Path.home() / ".local" / "share" / name
 
 
+def real_location(path) -> str:
+    r"""画面に出す場所・ほかのプログラムに渡す場所(実際にファイルが置かれている場所)。
+
+    **Microsoft Store の Python は、`%LOCALAPPDATA%` の下に新しく作ったファイルを、
+    その Python だけの場所へ置き換えて置く**
+    (`%LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.3.12_…\LocalCache\Local\…`。
+    Store の Python は 3.11 からレジストリの置き換えは止めたが、ファイルの置き換えは続いている)。
+    Python からは元の場所にあるように見えるので Python の中では困らないが、
+    エクスプローラー・ブラウザ・外枠(exe)は元の場所を見るので**見つからない**。
+    画面に出す場所と、ほかのプログラムに渡す場所はこれを通す(`os.path.realpath` が実際の場所を返す)。
+
+    `%LOCALAPPDATA%` の外(共有フォルダ・アプリのフォルダ)はそのまま返す
+    (ネットワークドライブの名前を UNC に書き換えない)。Windows 以外もそのまま。
+    """
+    text = str(path)
+    if os.name != "nt" or not text:
+        return text
+    return _real_location(text, os.environ.get("LOCALAPPDATA", ""), os.path.realpath)
+
+
+def _real_location(text: str, base: str, realpath) -> str:
+    """`real_location` の中身(試験では OS によらず確かめる)。"""
+    if not base:
+        return text
+    try:
+        here = os.path.normcase(os.path.abspath(text))
+        root = os.path.normcase(os.path.abspath(base)).rstrip("\\/")
+    except (OSError, ValueError):
+        return text
+    if not here.startswith(root + os.sep):
+        return text
+    try:
+        return str(realpath(text)) or text
+    except (OSError, ValueError):
+        return text
+
+
 # 領域の名前。実体の作成は `ensure_local_dirs()` で行う
 LOCAL_SUBDIRS = ("runtime", "logs", "pycache", "cache", "work", "backup", "data")
 

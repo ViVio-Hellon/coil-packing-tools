@@ -274,8 +274,9 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     def fatal(error: "start_app.StartupError") -> int:
         try:
-            from common import logging_utils
-            log_dir = str(logging_utils.log_dir())
+            from common import app_config, logging_utils
+            # 外枠(exe)は Python の外。実際に置かれている場所を知らせる(Store の Python)
+            log_dir = app_config.real_location(logging_utils.log_dir())
         except Exception:                         # noqa: BLE001 - 失敗の報告で失敗しない
             log_dir = ""
         try:

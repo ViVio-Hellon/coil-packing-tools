@@ -23,6 +23,7 @@ const STYLE: &str = r#"
           padding:2px 5px;border-radius:2px;word-break:break-all}
  pre{padding:10px;max-height:16em;overflow:auto;white-space:pre-wrap}
  button{font:inherit;padding:8px 18px;margin-top:16px;cursor:pointer}
+ .note{color:#556171;font-size:13px;margin-top:4px}
 "#;
 
 /// Python が「受け付け始めた」と言う前の、ほんの一瞬に出す画面。
@@ -64,7 +65,11 @@ pub fn failure(failure: Option<&Failure>, python: &str, stderr: &[String], log_h
             String::new(),
         ),
     };
-    let log_dir = if log_dir.is_empty() { log_hint.to_string() } else { log_dir };
+    // Python が知らせた場所は、実際に置かれている場所(Microsoft Store の Python は
+    // %LOCALAPPDATA% の下を別の場所に置く。Python の `app_config.real_location`)。
+    // 知らせが無いときは外枠の見立てで、Store の Python なら別の場所にあると添える
+    let guessed = log_dir.is_empty();
+    let log_dir = if guessed { log_hint.to_string() } else { log_dir };
     let tail = stderr.iter().rev().take(25).rev().cloned().collect::<Vec<_>>().join("\n");
     format!(
         r#"<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>起動できませんでした</title>
@@ -72,7 +77,7 @@ pub fn failure(failure: Option<&Failure>, python: &str, stderr: &[String], log_h
 <h1 class="ng">起動できませんでした</h1>
 <p>{message}</p>
 {hint}
-<dt>ログの場所</dt><p><code>{log_dir}</code></p>
+<dt>ログの場所</dt><p><code>{log_dir}</code></p>{store}
 <dt>使った Python</dt><p><code>{python}</code></p>
 {tail}
 <button type="button" onclick="location.reload()">もう一度試す</button>
@@ -80,6 +85,7 @@ pub fn failure(failure: Option<&Failure>, python: &str, stderr: &[String], log_h
         message = escape(&message),
         hint = if hint.is_empty() { String::new() } else { format!(r#"<div class="hint">{}</div>"#, escape(&hint)) },
         log_dir = escape(if log_dir.is_empty() { "(分かりません)" } else { &log_dir }),
+        store = if guessed { STORE_NOTE } else { "" },
         python = escape(if python.is_empty() { "(見つかっていません)" } else { python }),
         tail = if tail.is_empty() {
             String::new()
@@ -88,6 +94,11 @@ pub fn failure(failure: Option<&Failure>, python: &str, stderr: &[String], log_h
         },
     )
 }
+
+/// 外枠の見立てのログの場所に添える(Microsoft Store の Python はファイルを別の場所に置く)
+const STORE_NOTE: &str = r#"<p class="note">Microsoft Store から入れた Python のときは、
+<code>%LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.3.…\LocalCache\Local\CoilPackingTools\logs</code>
+にあります。</p>"#;
 
 #[cfg(test)]
 mod tests {
@@ -102,6 +113,14 @@ mod tests {
         assert!(html.contains("C:\\logs"));
         assert!(html.contains("Traceback &lt;x&gt;"));
         assert!(html.contains("python.exe"));
+        assert!(!html.contains("LocalCache"), "Python が知らせた場所だけを出す");
+    }
+
+    #[test]
+    fn 場所の知らせが無ければ見立てとstoreのpythonの場所を出す() {
+        let html = failure(None, "python.exe", &[], "C:\\Users\\u\\AppData\\Local\\CoilPackingTools\\logs");
+        assert!(html.contains("AppData\\Local\\CoilPackingTools\\logs"));
+        assert!(html.contains("LocalCache\\Local\\CoilPackingTools\\logs"));
     }
 
     #[test]

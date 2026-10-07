@@ -674,7 +674,8 @@ def _log_routes(bp: Blueprint) -> None:
         """ログとエラーの記録。統合画面の上の帯の「ログ」から開く(中に埋め込む)。"""
         conf = current_app.config
         return render_template("log.html", display_name=conf["DISPLAY_NAME"],
-                               token=conf["TOKEN"], embed=request.args.get("embed") == "1")
+                               token=conf["TOKEN"], embed=request.args.get("embed") == "1",
+                               settings_file=app_config.real_location(local_settings.path()))
 
     @bp.post("/api/client-log")
     def client_log():

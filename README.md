@@ -54,7 +54,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.2.1 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] 説明書 ログ 接続OK [終了]
+上の帯   コイル梱包ツール VER1.2.2 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] 説明書 ログ 接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
@@ -120,6 +120,16 @@ docs/デスクトップ版.md              デスクトップ版の作り・動�
 | 配布設定(共通: ログの出力先・残す日数。上の帯の「ログ」で書き出す) | アプリ直下 `配布設定\common\` |
 | CSV などの書き出し先 | アプリ直下 `export\<機能>\` |
 
+**Microsoft Store から入れた Python のときは、`%LOCALAPPDATA%` の下は別の場所にあります。**
+Store の Python は、`%LOCALAPPDATA%` の下に作るファイルを自分だけの場所
+`%LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.3.12_…\LocalCache\Local\`(版ごとに別)
+に置き換えて置きます。ツールの中からは今までどおり見えますが、エクスプローラーで上の表の場所を
+開いても見つかりません。**画面に出る場所(各機能の設定画面の「保存先」・上の帯の「ログ」・起動できない
+ときの画面)は、統合 1.2.2 から実際に置かれている場所を出します。**
+Python を 3.12 から 3.13 に上げるなど **Store の Python の版を変えると、置き場所も変わります**
+(手元DBは取り込み直すので困りませんが、このPCに保存した設定は前の版の場所に残ります。
+配布設定で配った値は、起動したときに入れ直されます)。
+
 共有フォルダの設定(梱包明細の右上の文字・管理者パスワード、梱包資材マスタ、仕掛台帳)は
 各機能の移植元のとおりです。
 
@@ -163,10 +173,10 @@ docs/デスクトップ版.md              デスクトップ版の作り・動�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.2.1 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
-| 梱包明細 | 0.13.13 | `modules/packing_details/config/app.json` |
-| ペナラベル | 1.5.13 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
-| 資材計算 | 0.2.12 | `modules/packing_material_calculation/config/app.json` |
+| コイル梱包ツール(統合ツール) | 1.2.2 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
+| 梱包明細 | 0.13.14 | `modules/packing_details/config/app.json` |
+| ペナラベル | 1.5.14 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| 資材計算 | 0.2.13 | `modules/packing_material_calculation/config/app.json` |
 
 機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
 だけを変えたら、統合ツールの版だけを上げます。決まりの全体は `docs/変更履歴.md`。
