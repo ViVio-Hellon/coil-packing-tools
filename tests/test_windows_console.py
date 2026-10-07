@@ -104,8 +104,17 @@ class ConsoleTextTest(unittest.TestCase):
         self.assertIn("CommandLine=python.exe start_app.py", launch_guard.console_text(raw))
 
     @unittest.skipUnless(sys.platform == "win32", "端末のコードページは Windows だけ")
-    def test_japanese_windows_text_is_read(self):  # pragma: no cover - Windows だけ
-        self.assertIn("情報", launch_guard.console_text(NO_TASK))
+    def test_console_code_page_text_is_read(self):  # pragma: no cover - Windows だけ
+        """その PC の端末のコードページで読む。日本語の Windows(932)なら「情報: …」が読める。
+
+        GitHub Actions は英語の Windows(437)なので、cp932 の「情報」は読めなくて正しい
+        (英語の Windows の tasklist は英語で出す)。そこではそのコードページの字で確かめる。
+        """
+        import ctypes
+        if ctypes.windll.kernel32.GetOEMCP() == 932:
+            self.assertIn("情報", launch_guard.console_text(NO_TASK))
+        raw = "INFO: Ä é ü 情報".encode("oem", "replace")
+        self.assertEqual(launch_guard.console_text(raw), raw.decode("oem"))
 
 
 class CommandLineTest(unittest.TestCase):
