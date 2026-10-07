@@ -288,23 +288,54 @@ def is_process_alive(pid: int) -> bool:
     return True
 
 
+def console_text(raw: Optional[bytes]) -> str:
+    """Windows のコマンド(tasklist・wmic・PowerShell)の出力を文字にする。**落ちない**。
+
+    出力は端末のコードページ(日本語の Windows では cp932)で来る。`text=True` に任せると、
+    Python の UTF-8 モード(`-X utf8`・環境変数 `PYTHONUTF8=1`)では UTF-8 として読み、
+    日本語の行(tasklist の「情報: 指定された条件に一致するタスクは…」)で読み手のスレッドが
+    落ちて、結果が None になる。統合 1.2.0 のデスクトップ版は、これで**起動できなかった**
+    (現場の PC。英語の Windows の自動確認では日本語が出ないので見つからなかった)。
+    そこでバイトのまま受け取り、ここで読み方を決める(読めない字は置き換える)。
+    """
+    if not raw:
+        return ""
+    if raw[:2] == b"\xff\xfe" or (len(raw) > 3 and raw[1:2] == b"\x00" and raw[3:4] == b"\x00"):
+        return raw.decode("utf-16-le", "replace").lstrip("\ufeff")    # wmic をファイルへ向けたときの形
+    if os.name == "nt":
+        for encoding in ("oem", "mbcs"):                                # 端末のコードページ
+            try:
+                return raw.decode(encoding, "replace")
+            except LookupError:
+                continue
+    return raw.decode("utf-8", "replace")
+
+
+def _run_console(args: list, timeout: float = 5) -> bytes:
+    """Windows のコマンドを黒い窓を出さずに流し、出力を**バイトのまま**返す(読み方は呼び手)。"""
+    out = subprocess.run(
+        args, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return out.stdout or b""
+
+
 def _is_alive_windows(pid: int) -> bool:
     """Windows では `tasklist` で確認する。
 
     `OpenProcess` を ctypes で叩く手もあるが、権限やハンドルの後始末を
     誤ると別の不具合を招く。起動時に1回だけの判定なので、
     外部コマンドの数十msは問題にならない。
+
+    **出力はバイトのまま見る**(`"1234"` は ASCII なので、どのコードページでも同じバイト)。
+    文字にしないので、日本語の「情報: …」が出ても、UTF-8 モードでも落ちない。
     """
     try:
-        out = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
-            capture_output=True, text=True, timeout=5,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        raw = _run_console(["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"])
     except (OSError, subprocess.SubprocessError) as exc:
         log.warning("tasklist を実行できませんでした: %s", exc)
-        return True              # 分からないときは「生きている」に倒す
-    return f'"{pid}"' in out.stdout
+        return True              # 分からないときは「生きている」に倒す(続く起動確認で見分ける)
+    return f'"{pid}"'.encode("ascii") in raw
 
 
 def process_command_line(pid: int) -> str:
@@ -318,24 +349,36 @@ def process_command_line(pid: int) -> str:
     if pid <= 0:
         return ""
     if os.name == "nt":
-        try:
-            out = subprocess.run(
-                ["wmic", "process", "where", f"ProcessId={pid}", "get",
-                 "CommandLine", "/format:list"],
-                capture_output=True, text=True, timeout=5,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            for line in out.stdout.splitlines():
-                if line.startswith("CommandLine="):
-                    return line.split("=", 1)[1].strip()
-        except (OSError, subprocess.SubprocessError) as exc:
-            log.warning("wmic を実行できませんでした: %s", exc)
-        return ""
+        return _command_line_windows(pid)
     try:
         raw = Path(f"/proc/{pid}/cmdline").read_bytes()
         return raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()
     except OSError:
         return ""
+
+
+def _command_line_windows(pid: int) -> str:
+    """Windows でそのPIDのコマンドライン。取れなければ空文字。
+
+    wmic は Windows 11 の新しい版では入っていないことがある。無ければ PowerShell で引く。
+    出力はバイトで受け、`console_text` で読む(日本語の Windows・UTF-8 モードでも落ちない)。
+    """
+    tries = (
+        ["wmic", "process", "where", f"ProcessId={pid}", "get", "CommandLine", "/format:list"],
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+         f"$p = Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; "
+         f"if ($p) {{ 'CommandLine=' + $p.CommandLine }}"],
+    )
+    for args in tries:
+        try:
+            text = console_text(_run_console(args, timeout=10))
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("%s を実行できませんでした: %s", args[0], exc)
+            continue
+        for line in text.splitlines():
+            if line.startswith("CommandLine="):
+                return line.split("=", 1)[1].strip()
+    return ""
 
 
 # ------------------------------------------------------------------
@@ -604,19 +647,24 @@ def find_legacy_instances() -> list:
     found: list = []
     locks = _legacy_lock_files()
     for label, app_id, default_port in LEGACY_APPS:
-        port, pid = 0, 0
-        path = locks.get(app_id)
-        if path is not None:
-            try:
-                data = json.loads(Path(path).read_text(encoding="utf-8"))
-                port, pid = int(data.get("port") or 0), int(data.get("pid") or 0)
-            except (OSError, ValueError, TypeError):
-                port, pid = 0, 0
-        if port and pid and is_process_alive(pid) and _answers_as(port, app_id):
-            found.append(LegacyInstance(label, port, pid))
-            continue
-        if _answers_as(default_port, app_id):
-            found.append(LegacyInstance(label, default_port))
+        try:
+            port, pid = 0, 0
+            path = locks.get(app_id)
+            if path is not None:
+                try:
+                    data = json.loads(Path(path).read_text(encoding="utf-8"))
+                    port, pid = int(data.get("port") or 0), int(data.get("pid") or 0)
+                except (OSError, ValueError, TypeError):
+                    port, pid = 0, 0
+            if port and pid and is_process_alive(pid) and _answers_as(port, app_id):
+                found.append(LegacyInstance(label, port, pid))
+                continue
+            if _answers_as(default_port, app_id):
+                found.append(LegacyInstance(label, default_port))
+        except Exception as exc:                        # noqa: BLE001 - 見分けで起動を止めない
+            # 単体版が動いているかの見分けは**念のため**。見分けられないことで起動を
+            # 止めない(統合 1.2.0 で、見分けの途中の思わぬエラーで起動できなかった)
+            log.warning("単体版(%s)が動いているか見分けられませんでした: %s", label, exc)
     return found
 
 

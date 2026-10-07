@@ -62,7 +62,10 @@ def isolated_env(root: Path, **extra) -> dict:
         PACKING_PENA_DISTRIBUTION_DIR=str(root / "pena" / "dist"),
         PPL_PREFER_ACCESS="0",
         PYTHONDONTWRITEBYTECODE="1",
+        # 外枠(bridge.rs)と同じ起こし方: ログ(標準エラー)だけ UTF-8。UTF-8 モードにはしない
+        PYTHONIOENCODING="utf-8",
     )
+    env.pop("PYTHONUTF8", None)
     env.update(extra)
     return env
 
@@ -136,7 +139,7 @@ class BridgeProcessTest(unittest.TestCase):
         env = isolated_env(root, COIL_PACKING_TOOLS_TOKEN=self.TOKEN,
                            PYTHONPATH=str(root / "nolisten"))
         self.proc = subprocess.Popen(
-            [sys.executable, "-X", "utf8", str(ROOT / "bridge.py")], env=env, cwd=str(ROOT),
+            [sys.executable, str(ROOT / "bridge.py")], env=env, cwd=str(ROOT),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.addCleanup(self._kill)
         self.err: list = []
@@ -270,7 +273,7 @@ class FatalTest(unittest.TestCase):
             blocker.write_text("x", encoding="utf-8")
             env = isolated_env(Path(tmp), COIL_PACKING_TOOLS_LOCAL_DIR=str(blocker),
                                COIL_PACKING_TOOLS_LOG_DIR=str(Path(tmp) / "logs"))
-            done = subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "bridge.py")],
+            done = subprocess.run([sys.executable, str(ROOT / "bridge.py")],
                                   env=env, cwd=str(ROOT), input=b"", capture_output=True,
                                   timeout=120)
         self.assertEqual(done.returncode, 1, done.stderr[-800:])
@@ -294,6 +297,18 @@ class DesktopShellTest(unittest.TestCase):
         main_rs = (ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
         self.assertIn('const SCHEME: &str = "app";', main_rs)
         self.assertIn("app.localhost", security.BRIDGE_HOSTS)
+
+    def test_python_is_not_started_in_utf8_mode(self):
+        """外枠は Python を UTF-8 モード(`-X utf8`)で起こさない(ブラウザ版と同じ文字コードの動き)。
+
+        統合 1.2.0 では `-X utf8` を付けていたため、日本語の Windows で tasklist の
+        「情報: …」(cp932)を UTF-8 として読んで落ち、起動できなかった。
+        """
+        bridge_rs = (ROOT / "src-tauri" / "src" / "bridge.rs").read_text(encoding="utf-8")
+        code = "\n".join(line.split("//", 1)[0] for line in bridge_rs.splitlines())
+        self.assertNotIn('.arg("utf8")', code)
+        self.assertNotIn('"-X"', code)
+        self.assertIn('.env("PYTHONIOENCODING", "utf-8")', code, "ログは UTF-8 で受ける")
 
     def test_env_names_match(self):
         """外枠が渡す環境変数の名前を、Python 側が読む名前とそろえる。"""

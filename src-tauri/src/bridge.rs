@@ -223,11 +223,14 @@ impl Bridge {
     }
 
     fn spawn(self: &Arc<Self>, program: &str, args: &[String], script: &Path) -> std::io::Result<()> {
+        // **`-X utf8`(UTF-8 モード)は付けない。** ブラウザ版(Start.vbs)と同じ文字コードの
+        // 動きにそろえる。UTF-8 モードでは Windows のコマンドの日本語の出力(cp932)や、
+        // 文字コードを書いていないファイルの読み書きが変わり、統合 1.2.0 では日本語の
+        // Windows で起動できなかった(tasklist の「情報: …」)。外枠とのやりとりはバイトで、
+        // Python のログ(標準エラー)は PYTHONIOENCODING で UTF-8 にする
         let mut command = Command::new(program);
         command
             .args(args)
-            .arg("-X")
-            .arg("utf8")
             .arg(script)
             .current_dir(&self.root)
             .env("COIL_PACKING_TOOLS_TOKEN", &self.token)
@@ -254,7 +257,16 @@ impl Bridge {
         thread::Builder::new()
             .name("python-stderr".into())
             .spawn(move || {
-                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                // 読めない字(UTF-8 でない行)が混じっても読み続ける(`lines()` はそこで止まる)
+                let mut reader = BufReader::new(stderr);
+                let mut buf = Vec::new();
+                loop {
+                    buf.clear();
+                    match reader.read_until(b'\n', &mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {}
+                    }
+                    let line = String::from_utf8_lossy(&buf).trim_end_matches(['\r', '\n']).to_string();
                     let mut tail = tail.lock().unwrap();
                     if tail.len() >= STDERR_LINES {
                         tail.pop_front();
