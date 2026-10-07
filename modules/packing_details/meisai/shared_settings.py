@@ -92,6 +92,10 @@ LOCK_NAME = FILE_NAME + ".lock"
 LOCK_WAIT_SEC = 5.0
 # これより古い鍵は、書いた端末が落ちて残ったものとみなして外す
 LOCK_STALE_SEC = 30.0
+# Windows では、ほかの端末が鍵を外している最中(消す途中)のファイルを作ろうとすると
+# 「アクセスが拒否されました」になる。消えるのは一瞬なので少し待って繰り返す。
+# 本当に書けない共有(読み取り専用など)なら、この秒数で断る
+LOCK_DENIED_SEC = 2.0
 
 # 置き換えは、ほかの端末がちょうど読んでいると断られることがある
 # (Windows は開いているファイルを置き換えさせない)。読むのは一瞬なので
@@ -597,9 +601,19 @@ def _locked(folder: Path, name: str = LOCK_NAME) -> Iterator[None]:
     """
     lock = folder / name
     deadline = time.monotonic() + LOCK_WAIT_SEC
+    denied_until: Optional[float] = None
     while True:
         try:
             fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except PermissionError as exc:
+            # 鍵を外している最中(Windows)。`LOCK_DENIED_SEC` 続けば本当に書けない
+            now = time.monotonic()
+            if denied_until is None:
+                denied_until = now + LOCK_DENIED_SEC
+            if now > denied_until:
+                raise SharedError(f"共有フォルダに書けません: {exc}") from exc
+            time.sleep(0.05)
+            continue
         except FileExistsError:
             try:
                 age = time.time() - lock.stat().st_mtime

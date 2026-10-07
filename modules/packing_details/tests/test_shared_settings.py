@@ -20,6 +20,7 @@ import sqlite3
 import threading
 import time
 import unittest
+from unittest import mock
 
 from modules.packing_details.meisai import (admin_password, config, qa_mark, report, shared_settings,
                     user_settings)
@@ -540,6 +541,37 @@ class WriteTest(unittest.TestCase):
             shared_settings.update({"qa_mark": "X"})
         self.assertIn("ほかの端末", str(caught.exception))
         self.assertTrue(lock.exists())                   # 他人の鍵は外さない
+
+    def test_鍵を外している最中の拒否は待ってから書く(self):
+        """Windows では、ほかの端末が鍵を消している最中に作ろうとすると
+        「アクセスが拒否されました」になる(GitHub Actions の Windows で、
+        同時に書く試験がこれで「共有フォルダに書けません」になった)。少し待てば書ける。"""
+        real_open, calls = os.open, []
+
+        def flaky_open(path, flags, *args):
+            if str(path).endswith(shared_settings.LOCK_NAME) and len(calls) < 3:
+                calls.append(path)
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_open(path, flags, *args)
+
+        with mock.patch.object(shared_settings.os, "open", side_effect=flaky_open):
+            shared_settings.update({"qa_mark": "X"})
+        self.assertEqual(len(calls), 3)
+        data = json.loads(shared_settings.shared_path().read_text(encoding="utf-8"))
+        self.assertEqual(data["qa_mark"], "X")
+
+    def test_ずっと拒否される共有は書けないと断る(self):
+        """読み取り専用の共有などは、待ち続けずに「書けません」と断る。"""
+        original = shared_settings.LOCK_DENIED_SEC
+        shared_settings.LOCK_DENIED_SEC = 0.2
+        self.addCleanup(setattr, shared_settings, "LOCK_DENIED_SEC", original)
+        denied = PermissionError(13, "Permission denied", "lock")
+        started = time.monotonic()
+        with mock.patch.object(shared_settings.os, "open", side_effect=denied), \
+                self.assertRaises(shared_settings.SharedError) as caught:
+            shared_settings.update({"qa_mark": "X"})
+        self.assertIn("共有フォルダに書けません", str(caught.exception))
+        self.assertLess(time.monotonic() - started, shared_settings.LOCK_WAIT_SEC)
 
     def test_落ちた端末が残した古い鍵は外す(self):
         lock = shared_settings.shared_dir() / shared_settings.LOCK_NAME
