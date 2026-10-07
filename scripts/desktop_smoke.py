@@ -62,31 +62,54 @@ def isolated_env(work: Path) -> dict:
     return env
 
 
-def children(pid: int) -> list[int]:
-    """pid の子孫(孫も)。"""
+def processes() -> dict:
+    """いま動いているプロセス: pid → (親の pid, 起動した時刻, 名前)。
+
+    **pid だけで見ない。** 終わったプロセスの番号は、Windows ではすぐ別のプロセスに
+    使い回される(この台本が起こす powershell 自身のことも)。番号だけで「まだ動いている」
+    と見ると、残っていないのに残っていると読み違える(GitHub Actions で一度あった)。
+    起動した時刻が同じものだけを同じプロセスとみなす。
+    """
+    found: dict = {}
     if WINDOWS:
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-Command",
-             "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId)\" }"],
-            capture_output=True, text=True).stdout
-        pairs = [tuple(map(int, line.split())) for line in out.splitlines() if line.strip()]
-    else:
-        pairs = []
-        for name in os.listdir("/proc"):
-            if name.isdigit():
-                try:
-                    stat = Path(f"/proc/{name}/stat").read_text()
-                    pairs.append((int(name), int(stat.rsplit(")", 1)[1].split()[1])))
-                except (OSError, ValueError, IndexError):
-                    pass
+        script = ("Get-CimInstance Win32_Process | ForEach-Object { $t = 0; "
+                  "if ($_.CreationDate) { $t = $_.CreationDate.ToFileTimeUtc() }; "
+                  "\"$($_.ProcessId)|$($_.ParentProcessId)|$t|$($_.Name)\" }")
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                             capture_output=True, text=True, errors="replace").stdout
+        for line in out.splitlines():
+            cols = line.strip().split("|", 3)
+            if len(cols) == 4 and cols[0].isdigit() and cols[1].isdigit():
+                found[int(cols[0])] = (int(cols[1]), cols[2], cols[3])
+        return found
+    for name in os.listdir("/proc"):
+        if name.isdigit():
+            try:
+                stat = Path(f"/proc/{name}/stat").read_text()
+                head, rest = stat.rsplit(")", 1)
+                cols = rest.split()
+                found[int(name)] = (int(cols[1]), cols[19], head.split("(", 1)[1])
+            except (OSError, ValueError, IndexError):
+                pass
+    return found
+
+
+def children(pid: int, procs: dict) -> list[int]:
+    """pid の子孫(孫も)。"""
     found, frontier = [], [pid]
     while frontier:
         parent = frontier.pop()
-        for child, ppid in pairs:
+        for child, (ppid, _started, _name) in procs.items():
             if ppid == parent and child not in found:
                 found.append(child)
                 frontier.append(child)
     return found
+
+
+def still_running(before: dict, pids: list) -> list:
+    """`before` で見たプロセスのうち、同じもの(番号と起動した時刻が同じ)がまだ動いているもの。"""
+    now = processes()
+    return [p for p in pids if p in now and p in before and now[p][1] == before[p][1]]
 
 
 def listening_ports(pids: set) -> dict:
@@ -122,14 +145,6 @@ def listening_ports(pids: set) -> dict:
             if target.startswith("socket:[") and target[8:-1] in inodes:
                 result.setdefault(pid, []).append(inodes[target[8:-1]])
     return result
-
-
-def alive(pid: int) -> bool:
-    if WINDOWS:
-        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-                             capture_output=True, text=True).stdout
-        return str(pid) in out
-    return os.path.exists(f"/proc/{pid}")
 
 
 def main() -> int:
@@ -174,22 +189,26 @@ def main() -> int:
         ok = False
 
     if app.poll() is None:
-        tree = {app.pid, *children(app.pid)}
+        before = processes()
+        tree = {app.pid, *children(app.pid, before)}
         ports = listening_ports(tree)
         if ports:
             print(f"[NG] 待ち受けているプロセスがあります: {ports}")
             ok = False
         else:
-            print(f"[OK] 待ち受けはありません(調べたプロセス {len(tree)} 個)")
+            names = ", ".join(sorted(before[p][2] for p in tree if p in before))
+            print(f"[OK] 待ち受けはありません(調べたプロセス {len(tree)} 個: {names})")
         others = [pid for pid in tree if pid != app.pid]
         app.terminate()
         app.wait(timeout=30)
         deadline = time.monotonic() + 20
-        while time.monotonic() < deadline and any(alive(p) for p in others):
-            time.sleep(0.5)
-        left = [p for p in others if alive(p)]
+        left = still_running(before, others)
+        while left and time.monotonic() < deadline:
+            time.sleep(1)
+            left = still_running(before, others)
         if left:
-            print(f"[NG] exe を止めても残ったプロセスがあります: {left}")
+            print("[NG] exe を止めても残ったプロセスがあります: "
+                  + ", ".join(f"{p}({before[p][2]})" for p in left))
             ok = False
         else:
             print("[OK] exe を止めたら子プロセス(Python など)も終わりました")

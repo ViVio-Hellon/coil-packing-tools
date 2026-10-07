@@ -18,6 +18,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from modules.packing_details.meisai import config, master_browse, shared_settings, slip_history
 
@@ -185,7 +186,11 @@ class MasterTest(unittest.TestCase):
         self.assertIn("足した", calls)                                # 変わったので数え直す
         self.assertEqual({t.table: t.rows for t in view.tables}["足した"], 3)
 
-    def test_共有が応えなければ待たせ続けない_重ねない(self):
+    def _hold_reads(self):
+        """共有が応えない形にする(返す Event を立てるまで読み込みを止める)。もとの読み方も返す。
+
+        後始末で、止めた読み込みが終わるのを待つ(Windows は開いているファイルを
+        消させないので、待たずに一時フォルダを消すと試験が別の理由で落ちる)。"""
         release = threading.Event()
         original = master_browse._fill
 
@@ -193,9 +198,30 @@ class MasterTest(unittest.TestCase):
             release.wait(5)
             return original(*args, **kwargs)
 
+        def settle():
+            release.set()
+            for t, _s in list(master_browse._running):
+                t.join(5)
+
         master_browse._fill = slow
         self.addCleanup(setattr, master_browse, "_fill", original)
-        self.addCleanup(release.set)
+        self.addCleanup(settle)
+        return release, original
+
+    def test_時計の刻みが粗くても重ねない(self):
+        """Windows の時計は約16ミリ秒刻み。0.2秒待っても、時計の上では 0.1875秒しか
+        経っていないことがある。「応えません」と返した読み込みが残っていれば、時計に
+        関わらず重ねずに断る(GitHub Actions の Windows で下の試験がこれで落ちた)。
+        ここでは時計を止めて、いちばん粗い場合を作る。"""
+        self._hold_reads()
+        with mock.patch.object(master_browse.time, "monotonic", return_value=1000.0):
+            first = master_browse.browse("master", timeout=0.2)
+            second = master_browse.browse("master", timeout=0.2)
+        self.assertIn("応えません", first.error)
+        self.assertIn("前の読み込み", second.error)
+
+    def test_共有が応えなければ待たせ続けない_重ねない(self):
+        release, original = self._hold_reads()
         started = time.monotonic()
         view = master_browse.browse("master", timeout=0.2)
         self.assertLess(time.monotonic() - started, 2)

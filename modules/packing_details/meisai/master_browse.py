@@ -190,6 +190,10 @@ def source_of(key: str) -> Source:
 # ==================================================================
 _guard = threading.Lock()
 _running: list[tuple[threading.Thread, float]] = []
+# 呼んだ側が待ちきれずに「応えません」と返した読み込み(まだ裏で共有を待っている)。
+# 時計を比べるだけだと、Windows の時計の刻み(約16ミリ秒)で「まだ時間内」と
+# 読み違えることがある(GitHub Actions の Windows で試験が落ちて見つかった)
+_overdue: set[threading.Thread] = set()
 
 
 def _bounded(fn: Callable[[], Any], timeout: float) -> Any:
@@ -210,7 +214,8 @@ def _bounded(fn: Callable[[], Any], timeout: float) -> Any:
     now = time.monotonic()
     with _guard:
         _running[:] = [(t, s) for t, s in _running if t.is_alive()]
-        if any(now - started >= timeout for _, started in _running):
+        _overdue.intersection_update(t for t, _ in _running)
+        if _overdue or any(now - started >= timeout for _, started in _running):
             raise BrowseError("前の読み込みが、まだ共有の応えを待っています。"
                               "少し待ってから、もう一度押してください。")
         thread = threading.Thread(target=run, name="master-browse", daemon=True)
@@ -218,6 +223,8 @@ def _bounded(fn: Callable[[], Any], timeout: float) -> Any:
         thread.start()
     thread.join(timeout)
     if thread.is_alive():
+        with _guard:
+            _overdue.add(thread)
         raise BrowseError(f"共有フォルダが{timeout:g}秒以内に応えません。"
                           "ネットワークを確かめてから、もう一度押してください。")
     if "error" in box:
@@ -616,5 +623,6 @@ def reset_for_tests() -> None:
     """試験用。"""
     with _guard:
         _running.clear()
+        _overdue.clear()
     with _counts_lock:
         _counts_cache.clear()
