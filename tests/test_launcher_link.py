@@ -224,6 +224,21 @@ class ProcessManagerTest(unittest.TestCase):
         self.assertEqual(self.run_main({"ok": False, "busy": True, "reason": "busy",
                                         "running": ["資材計算: 取り込み"]}), 2)
 
+    def test_reason_comes_first_for_the_launcher(self):
+        """ランチャー 1.7.1 は stop.bat の出力のはじめの行を理由として見せる。"""
+        import io
+        from contextlib import redirect_stdout
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.run_main({"ok": False, "reason": "refused", "message": "画面で「閉じない」が選ばれました"})
+        self.assertTrue(out.getvalue().startswith("止めませんでした: 画面で「閉じない」"), out.getvalue())
+
+    def test_old_launcher_stop_bat_still_stops(self):
+        """1.2.4 の launcher_stop.bat(`--any` を付ける)が残っていても、断らずに止める。"""
+        with mock.patch.object(process_manager, "_request_shutdown", return_value={"ok": True}), \
+                mock.patch.object(process_manager, "_wait_gone", return_value=True):
+            self.assertEqual(process_manager.main(["--any"]), 0)
+
     def test_desktop_is_not_stopped_and_is_1(self):
         with mock.patch("launch_guard.desktop_running", return_value=True), \
                 mock.patch.object(process_manager, "bring_desktop_to_front") as front, \
@@ -232,6 +247,13 @@ class ProcessManagerTest(unittest.TestCase):
         front.assert_called_once()
         stop.assert_not_called()
 
+
+    def test_force_does_not_relaunch_the_desktop_window(self):
+        """ランチャーの強制終了(窓を閉じた直後の stop.bat --force)で exe を起こし直さない。"""
+        with mock.patch("launch_guard.desktop_running", return_value=True), \
+                mock.patch.object(process_manager, "bring_desktop_to_front") as front:
+            self.assertEqual(process_manager.main(["--force"]), 1)
+        front.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

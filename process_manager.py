@@ -88,8 +88,12 @@ class StopResult:
         self.refused = False
 
     def __str__(self) -> str:
-        mark = "済" if self.stopped else "--"
-        return f"[{mark}] {self.mode}: {self.message}"
+        if self.stopped:
+            return f"[済] {self.mode}: {self.message}"
+        # 止めなかった理由を**行の頭に**出す。業務ツール統合ランチャー(1.7.1〜)は、
+        # stop.bat が 0 以外で終わると出力のはじめの行を理由として利用者に見せる
+        where = "" if self.mode == modes.MAIN else f"({self.mode})"
+        return f"止めませんでした{where}: {self.message}"
 
 
 # ------------------------------------------------------------------
@@ -319,6 +323,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--force", action="store_true",
                         help="実行中の処理を中断してでも止める")
     parser.add_argument("--status", action="store_true", help="状態を見るだけ")
+    # 統合 1.2.4 の launcher_stop.bat が付けていた印(1.2.5 で取りやめ)。上書きで入れ替えた PC に
+    # 古い launcher_stop.bat が残ると、ランチャー 1.7〜 はそれを終了の入口として使う。そのときも
+    # 引数の誤りで断らず、ふつうに止める(読み捨てる)
+    parser.add_argument("--any", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     targets = list(modes.KEYS) if args.all else [modes.normalize(args.mode)]
@@ -338,7 +346,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if launch_guard.desktop_running():
         print(DESKTOP_MESSAGE)
-        bring_desktop_to_front()
+        # 窓を前に出すのは、人が stop.bat を押したときだけ。`--force`(ランチャーの「強制終了」)は
+        # 終わらせたい側なので出さない ── 前に出す仕組みは exe をもう一度起動するもので、窓が
+        # 閉じかけていると(ランチャーは窓を閉じた直後に stop.bat --force を呼ぶ)新しく起動してしまう
+        if not args.force:
+            bring_desktop_to_front()
         return EXIT_FAILED
 
     codes = []
