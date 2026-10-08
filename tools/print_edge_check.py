@@ -49,6 +49,19 @@ SAFE = 5.0
 TOL = 0.1          # 線の縁のにじみ(アンチエイリアス)ぶん
 CUT_BAND_MM = 1.5  # 真ん中の切り取り線とみなす幅(±)
 
+#: 「初めて刷るときの既定」と「設定済み」を比べるときの解像度・違いとみなす濃さ
+CMP_DPI = 100
+CMP_DIFF = 48
+
+#: 紙面の `@page`(印刷のときに効くもの)を集める
+PAGE_RULES_JS = """() => { const out = [];
+  const walk = (rules) => { for (const r of rules) {
+    if (r.type === 6) out.push(r.style.cssText);
+    else if (r.cssRules && (r.type !== 4 || /print|all/.test(r.media.mediaText))) walk(r.cssRules);
+  } };
+  for (const sh of document.styleSheets) { try { walk(sh.cssRules); } catch (e) {} }
+  return out; }"""
+
 #: 試し刷りで位置を変えない目印(紙の端と重なる)
 CALIBRATION_GUIDES = (".label.guide{outline:none !important; border:none !important}"
                       ".rowline,.edgemark{display:none !important}")
@@ -181,6 +194,23 @@ def _ink(pdf: Path, fitz) -> list:
     return out
 
 
+def _compare(a: Path, b: Path, fitz) -> dict:
+    """2つの PDF が同じ紙面か(枚数・紙の大きさと向き・インクの違い)。"""
+    da, db = fitz.open(str(a)), fitz.open(str(b))
+    sizes = lambda d: [(round(p.rect.width * 25.4 / 72), round(p.rect.height * 25.4 / 72)) for p in d]
+    out = {"枚数": (len(da), len(db)), "紙": (sizes(da), sizes(db)), "違う点": 0.0}
+    if len(da) != len(db) or sizes(da) != sizes(db):
+        return out
+    worst = 0.0
+    for pa, pb in zip(da, db):
+        xa = pa.get_pixmap(dpi=CMP_DPI, alpha=False, colorspace=fitz.csGRAY).samples
+        xb = pb.get_pixmap(dpi=CMP_DPI, alpha=False, colorspace=fitz.csGRAY).samples
+        diff = sum(1 for u, v in zip(xa, xb) if abs(u - v) > CMP_DIFF)
+        worst = max(worst, diff * 100.0 / max(1, len(xa)))
+    out["違う点"] = worst
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--keep", help="作った PDF を残すフォルダ")
@@ -209,11 +239,30 @@ def main(argv=None) -> int:
                 pg = ctx.new_page()
                 res = pg.goto(base + path, wait_until="load")
                 pg.wait_for_timeout(1200)
-                pg.add_style_tag(content="@page { margin: 0 !important; }" + hide)   # 余白なし
+                rules = pg.evaluate(PAGE_RULES_JS)
+                if hide:
+                    pg.add_style_tag(content=hide)
+                # 初めて刷る PC の既定(デスクトップ版の窓は Edge と印刷の設定を分けて持つので、
+                # Edge で「余白なし」「背景のグラフィック」を選んであっても引き継がない):
+                # 余白は既定(紙面の @page のまま)・背景のグラフィックなし
+                fresh = out_dir / ("fresh_%02d.pdf" % n)
+                pg.pdf(path=str(fresh), prefer_css_page_size=True, print_background=False, format="A4")
+                pg.add_style_tag(content="@page { margin: 0 !important; }")   # 余白なし
                 pdf = out_dir / ("edge_%02d.pdf" % n)
                 pg.pdf(path=str(pdf), prefer_css_page_size=True, print_background=True, format="A4")
                 pg.close()
                 print("■ %s  %s  HTTP %s" % (name, path.split("?")[0], res.status if res else "-"))
+                declared = " / ".join(rules) or "(@page なし)"
+                has_zero = any(re.search(r"margin:\s*0(px|mm)?\s*(;|$)", r) for r in rules)
+                has_size = any("size:" in r for r in rules)
+                cmp = _compare(pdf, fresh, fitz)
+                same = (cmp["枚数"][0] == cmp["枚数"][1] and cmp["紙"][0] == cmp["紙"][1]
+                        and cmp["違う点"] < 0.01)
+                ok_decl = has_zero and has_size
+                bad += 0 if (same and ok_decl) else 1
+                print("   @page: %s %s" % (declared, "OK" if ok_decl else "★ 紙の大きさ・余白0 を決めていない"))
+                print("   初めて刷る既定(余白は既定・背景のグラフィックなし)と比べて: 枚数 %s 紙 %s 違う点 %.3f%% %s" % (
+                    cmp["枚数"][1], cmp["紙"][1][:1], cmp["違う点"], "同じ" if same else "★ 違う"))
                 for i, p in enumerate(_ink(pdf, fitz)):
                     if p is None:
                         print("   %d枚目: 白紙" % (i + 1))
@@ -230,7 +279,7 @@ def main(argv=None) -> int:
         cleanup()
         srv.shutdown()
     print("=" * 60)
-    print("5mm 未満: %d 枚" % bad + ("" if args.keep else "(PDF は %s)" % out_dir))
+    print("5mm 未満・初めて刷る既定で違う紙面: %d 件" % bad + ("" if args.keep else "(PDF は %s)" % out_dir))
     return 1 if bad else 0
 
 

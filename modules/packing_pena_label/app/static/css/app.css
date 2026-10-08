@@ -194,6 +194,10 @@ legend{font-size:11px; color:var(--muted); padding:0 4px}
 .lbl .row .k{width:34px; color:var(--muted)}
 .lbl .row .v{flex:1; font-weight:700}
 .lbl .cellref{font-size:9px; color:#9aa6b2}
+/* 印刷の設定(背景のグラフィックの有無)で紙面を変えない。デスクトップ版の窓は Edge と
+   印刷の設定を分けて持つので、初めて刷るときは既定(背景のグラフィックなし)になる。
+   そのときブラウザは薄い字を濃く刷り直すので、全サイズの台紙だけ見た目が変わっていた */
+.labelsheet{print-color-adjust:exact; -webkit-print-color-adjust:exact}
 
 /* ---------- 印刷 ---------- */
 /* **紙の端から 5mm 以上内側に刷る**(統合版で直した)。プリンターは紙の縁
