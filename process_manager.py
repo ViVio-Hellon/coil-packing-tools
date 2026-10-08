@@ -21,6 +21,15 @@
     python process_manager.py --all            両方止める
     python process_manager.py --force          実行中の処理を中断してでも止める
     python process_manager.py --status         状態を見るだけ
+
+ランチャー連携(統合 1.2.4。`launcher_stop.bat` / `launcher_status.bat` が使う):
+
+    python process_manager.py --any            動いているほう(ブラウザ版・デスクトップ版)を止める
+    python process_manager.py --any --force    実行中の処理を中断してでも止める
+    python process_manager.py --any --status   起動完了か。戻り値 0=使える 2=起動中 1=動いていない
+
+デスクトップ版はポートを持たないので、ローカル領域のファイルで止めるよう頼む
+(`common/desktop_control.py`)。統合画面の「終了」と同じく、取り込みなどの最中は止めない。
 """
 from __future__ import annotations
 
@@ -45,6 +54,13 @@ from common import app_config, modes  # noqa: E402
 from common.logging_utils import get_logger  # noqa: E402
 
 log = get_logger("coil_packing_tools", "process_manager")
+
+# デスクトップ版に「終了してよい」を伝えたあと、exe と Python が終わるのを待つ上限(秒)。
+# 外枠は Python を最大8秒待ってから終わる
+DESKTOP_WAIT_SEC = 20.0
+
+#: `--any --status` の戻り値
+STATUS_READY, STATUS_STOPPED, STATUS_STARTING = 0, 1, 2
 
 # 正常終了を要求したあと、実際に落ちるのを待つ上限(秒)
 GRACEFUL_WAIT_SEC = 8.0
@@ -261,6 +277,61 @@ def _wait_pid_gone(pid: int, timeout: float) -> bool:
 
 
 # ------------------------------------------------------------------
+# デスクトップ版(ランチャー連携)
+# ------------------------------------------------------------------
+def stop_desktop(*, force: bool = False) -> StopResult:
+    """デスクトップ版を止める。動いていなければ止まっている扱い。"""
+    import launch_guard
+    from common import desktop_control
+
+    result = StopResult("デスクトップ版")
+    if not launch_guard.desktop_running():
+        result.stopped = True
+        result.method = "none"
+        result.message = "起動していません"
+        return result
+    answer = desktop_control.request_stop(force=force)
+    if answer is None:
+        result.message = ("答えがありません(起動の途中か、窓が固まっています)。"
+                          "窓を閉じるか、少し待ってからもう一度止めてください")
+        return result
+    if not answer.get("stopped"):
+        result.busy_jobs = [str(x) for x in answer.get("running") or []]
+        result.message = str(answer.get("message") or "実行中の処理があります")
+        return result
+    end = time.monotonic() + DESKTOP_WAIT_SEC
+    while launch_guard.desktop_running() and time.monotonic() < end:
+        time.sleep(0.3)
+    if launch_guard.desktop_running():
+        result.message = "終了を伝えましたが、まだ動いています"
+        return result
+    result.stopped = True
+    result.method = "desktop_request"
+    result.message = "止めました"
+    log.info("デスクトップ版を止めました%s", "(中断してでも)" if force else "")
+    return result
+
+
+def any_status() -> tuple:
+    """動いているほうの状態。(戻り値, 説明)。"""
+    import launch_guard
+    from common import desktop_control
+
+    health = status(modes.DEFAULT)
+    if health is not None:
+        if health.get("ready"):
+            return STATUS_READY, f"使える: ブラウザ版 port={health['_lock']['port']}"
+        return STATUS_STARTING, f"起動中: ブラウザ版 {health.get('stage') or ''}".rstrip()
+    if launch_guard.desktop_running():
+        state = desktop_control.read_state()
+        if state and state.get("ready"):
+            return STATUS_READY, "使える: デスクトップ版"
+        stage = (state or {}).get("stage") or ""
+        return STATUS_STARTING, f"起動中: デスクトップ版 {stage}".rstrip()
+    return STATUS_STOPPED, "動いていない"
+
+
+# ------------------------------------------------------------------
 # CLI
 # ------------------------------------------------------------------
 def main(argv: Optional[list[str]] = None) -> int:
@@ -272,7 +343,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--force", action="store_true",
                         help="実行中の処理を中断してでも止める")
     parser.add_argument("--status", action="store_true", help="状態を見るだけ")
+    parser.add_argument("--any", action="store_true",
+                        help="ブラウザ版・デスクトップ版の動いているほう(ランチャー連携)")
     args = parser.parse_args(argv)
+
+    if args.any:
+        if args.status:
+            code, text = any_status()
+            print(text)
+            return code
+        results = [stop(modes.DEFAULT, force=args.force), stop_desktop(force=args.force)]
+        for result in results:
+            print(result)
+        return 0 if all(r.stopped for r in results) else 1
 
     targets = list(modes.KEYS) if args.all else [modes.normalize(args.mode)]
 

@@ -15,7 +15,7 @@ Option Explicit
 
 Const APP_NAME = "コイル梱包ツール"
 
-Dim shell, fso, here, script, cmd
+Dim shell, fso, here, script, cmd, i, extra
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 here = fso.GetParentFolderName(WScript.ScriptFullName)
@@ -66,5 +66,11 @@ End If
 On Error Resume Next
 shell.CurrentDirectory = shell.ExpandEnvironmentStrings("%TEMP%")
 On Error GoTo 0
-cmd = "pythonw " & Chr(34) & script & Chr(34)
+' 渡された引数はそのまま start_app.py へ渡す(ランチャー連携。業務ツール統合ランチャーは
+' 「--no-browser」を渡し、起動完了を確かめてから自分で画面を開く)。ダブルクリックでは何も付かない
+extra = ""
+For i = 0 To WScript.Arguments.Count - 1
+    extra = extra & " " & Chr(34) & WScript.Arguments(i) & Chr(34)
+Next
+cmd = "pythonw " & Chr(34) & script & Chr(34) & extra
 shell.Run cmd, 0, False
