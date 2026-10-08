@@ -870,6 +870,32 @@ async function takeOverScreen(button) {
   location.href = BASE + "/meisai";
 }
 
+/**
+ * まだサーバへ送っていない入力の名前(統合 1.2.5)。統合画面の「終了」・窓の × ・
+ * 外からの停止(ランチャー・stop.bat)の前に、統合画面が訊く。空なら閉じてよい。
+ */
+function unsaved() {
+  const state = window.APP.state || {};
+  const out = [];
+  const lot = $("lotNo").value || "";
+  if (lot && lot !== (state.lot_no || "")) out.push("LOT No(7桁になっていない入力)");
+  if (editingZen) out.push("前工程実績数(「確定する」を押していない)");
+  const weights = [];
+  for (let jou = 1; jou <= (state.jou_su || 0); jou += 1) {
+    const input = $(`weight${jou}`);
+    if (input) weights.push([input.value, (state.weights || [])[jou - 1] || ""]);
+  }
+  if (weights.some(([v]) => String(v).trim() === "")
+      && weights.some(([v, sent]) => String(v).trim() !== "" && String(v) !== String(sent))) {
+    out.push("重量(空の丈があるので、まだ送っていない)");
+  }
+  if ($("chkSpecify").checked && ($("specifyNo").value || "").trim()) {
+    out.push("No指定(「出力」を押していない)");
+  }
+  return out.concat(settings.unsaved()).map((name) => `梱包明細: ${name}`);
+}
+window.cptUnsaved = unsaved;
+
 async function boot() {
   window.APP.screen = tab.tabId();
   wire();

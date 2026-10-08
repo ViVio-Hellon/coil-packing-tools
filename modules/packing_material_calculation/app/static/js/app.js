@@ -32,6 +32,11 @@ if (quit) {
   // 統合画面の中(iframe)では、終了すると3機能とも終わる
   const inShell = window.top !== window;
   quit.addEventListener('click', async () => {
+    // 統合画面の中では、統合画面の「終了」と同じ流れにする(統合 1.2.5): 3機能の
+    // 保存していない入力を確かめ、途中の処理があるときだけ「中断して終了しますか」を訊く
+    if (inShell) {
+      try { window.top.postMessage({ type: 'cpt:quit' }, location.origin); return; } catch (e) { /* 下へ */ }
+    }
     if (!confirm(inShell ? 'このアプリを終了します。3つの機能とも終わります。よろしいですか？'
                          : 'このアプリを終了します。よろしいですか？')) return;
     const r = await call('/api/shutdown', {});

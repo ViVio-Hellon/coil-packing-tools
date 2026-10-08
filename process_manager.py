@@ -14,6 +14,19 @@
 実行中の長時間処理があるときは、既定では止めずに知らせる。
 中断してよいかは利用者が決める(`--force` で中断する)。
 
+**開いている統合画面に、保存していない入力を確かめてから止める**(統合 1.2.5)。
+入口は画面に「閉じる前の頼み」を出し、確かめ中なら 409 asking を返す(済めば入口が
+自分で終わる)ので、ここでは少しだけ終わるのを待つ。
+
+**デスクトップ版(コイル梱包ツール.exe の窓)は止めない。** 窓の × か「終了」で閉じる
+(閉じるときに保存していない入力・途中の処理を確かめるため)。動いていれば窓を前に出す。
+
+戻り値(業務ツール統合ツール all-tools の stop.bat と同じ):
+
+    0  止めた(動いていなかった)
+    2  止めなかった ── 途中の処理がある・画面で「閉じない」が選ばれた・画面で確かめ中
+    1  止められなかった ── デスクトップ版が動いている・応答しない など
+
 使い方:
 
     python process_manager.py                  統合アプリを止める
@@ -21,15 +34,6 @@
     python process_manager.py --all            両方止める
     python process_manager.py --force          実行中の処理を中断してでも止める
     python process_manager.py --status         状態を見るだけ
-
-ランチャー連携(統合 1.2.4。`launcher_stop.bat` / `launcher_status.bat` が使う):
-
-    python process_manager.py --any            動いているほう(ブラウザ版・デスクトップ版)を止める
-    python process_manager.py --any --force    実行中の処理を中断してでも止める
-    python process_manager.py --any --status   起動完了か。戻り値 0=使える 2=起動中 1=動いていない
-
-デスクトップ版はポートを持たないので、ローカル領域のファイルで止めるよう頼む
-(`common/desktop_control.py`)。統合画面の「終了」と同じく、取り込みなどの最中は止めない。
 """
 from __future__ import annotations
 
@@ -55,17 +59,20 @@ from common.logging_utils import get_logger  # noqa: E402
 
 log = get_logger("coil_packing_tools", "process_manager")
 
-# デスクトップ版に「終了してよい」を伝えたあと、exe と Python が終わるのを待つ上限(秒)。
-# 外枠は Python を最大8秒待ってから終わる
-DESKTOP_WAIT_SEC = 20.0
-
-#: `--any --status` の戻り値
-STATUS_READY, STATUS_STOPPED, STATUS_STARTING = 0, 1, 2
-
 # 正常終了を要求したあと、実際に落ちるのを待つ上限(秒)
 GRACEFUL_WAIT_SEC = 8.0
 # PIDで落としたあと、消えるのを待つ上限(秒)
 FORCE_WAIT_SEC = 5.0
+# 画面で確かめてもらうのを待つ上限(秒)。ランチャーは stop.bat を 20 秒で見切る
+ASKING_WAIT_SEC = 15.0
+
+#: 戻り値
+EXIT_STOPPED = 0
+EXIT_FAILED = 1
+EXIT_REFUSED = 2
+
+DESKTOP_MESSAGE = ("デスクトップ版(コイル梱包ツール.exe の窓)が動いています。"
+                   "窓の × か「終了」で閉じてください(stop.bat では止めません)。")
 
 
 class StopResult:
@@ -77,6 +84,8 @@ class StopResult:
         self.method = ""
         self.message = ""
         self.busy_jobs: list[str] = []
+        # 止めなかった(途中の処理・画面で「閉じない」・画面で確かめ中)。戻り値 2
+        self.refused = False
 
     def __str__(self) -> str:
         mark = "済" if self.stopped else "--"
@@ -128,7 +137,26 @@ def stop(mode: str, *, force: bool = False) -> StopResult:
 
     # --- 1. 正常終了を要求する ---
     asked = _request_shutdown(info.port, info.token, force=force)
+    reason = asked.get("reason")
+    if reason == "asking":
+        # 開いている画面に、保存していない入力を確かめてから閉じるよう頼んだ。
+        # 済めば入口が自分で終わる。少しだけ待つ
+        print(asked.get("message") or "画面に確かめてもらっています")
+        if _wait_gone(info.port, ASKING_WAIT_SEC):
+            launch_guard.remove_lock(mode)
+            result.stopped = True
+            result.method = "graceful"
+            result.message = "画面で確かめてもらい、終了しました"
+            return result
+        result.refused = True
+        result.message = "まだ画面で確認中です。画面を見てください(済めば自分で終わります)"
+        return result
+    if reason == "refused":
+        result.refused = True
+        result.message = str(asked.get("message") or "画面で「閉じない」が選ばれました")
+        return result
     if asked.get("busy"):
+        result.refused = True
         result.busy_jobs = asked.get("running", [])
         result.message = (f"実行中の処理があります: {', '.join(result.busy_jobs)}\n"
                           f"    中断して止めるには --force を付けてください")
@@ -154,6 +182,7 @@ def _request_shutdown(port: int, token: str, *, force: bool) -> dict:
     import launch_guard
 
     url = f"http://127.0.0.1:{port}/api/shutdown"
+    # 入口が画面へ頼んで返事を待つ(3秒)ぶん、待ち時間を長めにとる
     body = json.dumps({"force": force}).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if token:
@@ -162,17 +191,19 @@ def _request_shutdown(port: int, token: str, *, force: bool) -> dict:
         # プロキシを経由しない送信口を使う(`launch_guard` の注釈を参照)。
         # 社内PCのプロキシ設定に 127.0.0.1 の除外が無いと、自分自身への
         # 停止要求までプロキシへ送られて届かない
-        with launch_guard.local_request(url, timeout=5, data=body,
+        with launch_guard.local_request(url, timeout=10, data=body,
                                         method="POST", headers=headers) as res:
             payload = json.loads(res.read().decode("utf-8"))
             return {"ok": bool(payload.get("stopped"))}
     except urllib.error.HTTPError as exc:
-        if exc.code == 409:                        # 実行中の処理がある
+        if exc.code == 409:                        # 実行中の処理・画面で確かめ中・「閉じない」
             try:
                 payload = json.loads(exc.read().decode("utf-8"))
             except Exception:                      # noqa: BLE001
                 payload = {}
-            return {"ok": False, "busy": True,
+            reason = str(payload.get("reason") or "busy")
+            return {"ok": False, "busy": reason == "busy", "reason": reason,
+                    "message": payload.get("message", ""),
                     "running": payload.get("running", ["(不明)"])}
         log.info("停止要求は %s で拒否されました。PIDで止めます", exc.code)
         return {"ok": False}
@@ -277,61 +308,6 @@ def _wait_pid_gone(pid: int, timeout: float) -> bool:
 
 
 # ------------------------------------------------------------------
-# デスクトップ版(ランチャー連携)
-# ------------------------------------------------------------------
-def stop_desktop(*, force: bool = False) -> StopResult:
-    """デスクトップ版を止める。動いていなければ止まっている扱い。"""
-    import launch_guard
-    from common import desktop_control
-
-    result = StopResult("デスクトップ版")
-    if not launch_guard.desktop_running():
-        result.stopped = True
-        result.method = "none"
-        result.message = "起動していません"
-        return result
-    answer = desktop_control.request_stop(force=force)
-    if answer is None:
-        result.message = ("答えがありません(起動の途中か、窓が固まっています)。"
-                          "窓を閉じるか、少し待ってからもう一度止めてください")
-        return result
-    if not answer.get("stopped"):
-        result.busy_jobs = [str(x) for x in answer.get("running") or []]
-        result.message = str(answer.get("message") or "実行中の処理があります")
-        return result
-    end = time.monotonic() + DESKTOP_WAIT_SEC
-    while launch_guard.desktop_running() and time.monotonic() < end:
-        time.sleep(0.3)
-    if launch_guard.desktop_running():
-        result.message = "終了を伝えましたが、まだ動いています"
-        return result
-    result.stopped = True
-    result.method = "desktop_request"
-    result.message = "止めました"
-    log.info("デスクトップ版を止めました%s", "(中断してでも)" if force else "")
-    return result
-
-
-def any_status() -> tuple:
-    """動いているほうの状態。(戻り値, 説明)。"""
-    import launch_guard
-    from common import desktop_control
-
-    health = status(modes.DEFAULT)
-    if health is not None:
-        if health.get("ready"):
-            return STATUS_READY, f"使える: ブラウザ版 port={health['_lock']['port']}"
-        return STATUS_STARTING, f"起動中: ブラウザ版 {health.get('stage') or ''}".rstrip()
-    if launch_guard.desktop_running():
-        state = desktop_control.read_state()
-        if state and state.get("ready"):
-            return STATUS_READY, "使える: デスクトップ版"
-        stage = (state or {}).get("stage") or ""
-        return STATUS_STARTING, f"起動中: デスクトップ版 {stage}".rstrip()
-    return STATUS_STOPPED, "動いていない"
-
-
-# ------------------------------------------------------------------
 # CLI
 # ------------------------------------------------------------------
 def main(argv: Optional[list[str]] = None) -> int:
@@ -343,19 +319,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--force", action="store_true",
                         help="実行中の処理を中断してでも止める")
     parser.add_argument("--status", action="store_true", help="状態を見るだけ")
-    parser.add_argument("--any", action="store_true",
-                        help="ブラウザ版・デスクトップ版の動いているほう(ランチャー連携)")
     args = parser.parse_args(argv)
-
-    if args.any:
-        if args.status:
-            code, text = any_status()
-            print(text)
-            return code
-        results = [stop(modes.DEFAULT, force=args.force), stop_desktop(force=args.force)]
-        for result in results:
-            print(result)
-        return 0 if all(r.stopped for r in results) else 1
 
     targets = list(modes.KEYS) if args.all else [modes.normalize(args.mode)]
 
@@ -370,12 +334,52 @@ def main(argv: Optional[list[str]] = None) -> int:
                       f"ready={health['ready']} 起動={lock['started']}")
         return 0
 
-    failed = False
+    import launch_guard
+
+    if launch_guard.desktop_running():
+        print(DESKTOP_MESSAGE)
+        bring_desktop_to_front()
+        return EXIT_FAILED
+
+    codes = []
     for mode in targets:
         result = stop(mode, force=args.force)
         print(result)
-        failed = failed or not result.stopped
-    return 1 if failed else 0
+        if not result.stopped:
+            codes.append(EXIT_REFUSED if result.refused else EXIT_FAILED)
+    if EXIT_FAILED in codes:
+        return EXIT_FAILED
+    return EXIT_REFUSED if codes else EXIT_STOPPED
+
+
+def bring_desktop_to_front() -> bool:
+    """デスクトップ版の窓を前に出す。
+
+    exe をもう一度起動すると、2つ目は開かずに1つ目の窓を前に出して終わる
+    (`tauri-plugin-single-instance`)。それを使う(all-tools と同じ)。
+    """
+    exe = desktop_exe()
+    if exe is None or os.name != "nt":
+        return False
+    import subprocess
+    try:
+        subprocess.Popen([str(exe)], cwd=str(APP_ROOT), close_fds=True)
+    except OSError:
+        return False
+    return True
+
+
+def desktop_exe() -> Optional[Path]:
+    """アプリのフォルダにあるデスクトップ版の exe(名前は配布で変わることがある)。"""
+    try:
+        name = json.loads((APP_ROOT / "src-tauri" / "tauri.conf.json")
+                          .read_text(encoding="utf-8")).get("productName") or ""
+    except (OSError, ValueError):
+        name = ""
+    for candidate in [APP_ROOT / "コイル梱包ツール.exe"] + ([APP_ROOT / f"{name}.exe"] if name else []):
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 
 | ファイル | 用途 |
 |---|---|
-| `コイル梱包ツール.exe` | **デスクトップ版(1.1.0〜)。** 専用の窓で統合画面が開きます。ポートを使いません。窓の × か「終了」で終わります(どちらも確かめが出ます)。配布用フォルダに入ります(リポジトリでは GitHub Actions が作る `CoilPackingTools.exe`) |
+| `コイル梱包ツール.exe` | **デスクトップ版(1.1.0〜)。** 専用の窓で統合画面が開きます。ポートを使いません。窓の × か「終了」で終わります(保存していない入力・途中の処理があるときだけ確かめが出ます)。配布用フォルダに入ります(リポジトリでは GitHub Actions が作る `CoilPackingTools.exe`) |
 | `Start.vbs` | **ブラウザ版。** コンソールを出さずに起動し、ブラウザに統合画面が開きます。exe が無いとき・動かないときの予備 |
 | `start.bat` | 起動しないときの診断用。コンソールに理由が出ます(`start.bat --check` は環境の確認だけ、`start.bat --diagnostic` は細かいログまで残す) |
 | `stop.bat` | 明示的に止めるとき(3機能とも終わります)。資材計算の取り込み中は止めずに知らせます。中断してよければ `stop.bat --force` |
@@ -54,7 +54,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.2.4 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] 説明書 ログ 接続OK [終了]
+上の帯   コイル梱包ツール VER1.2.5 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] 説明書 ログ 接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
@@ -105,14 +105,15 @@ docs/デスクトップ版.md              デスクトップ版の作り・動�
 
 ## ランチャーから使う(業務ツール統合ランチャー)
 
-業務ツール統合ランチャー(`ViVio-Hellon/python-business-tools-launcher`)からは、次のファイルを使います
-(統合 1.2.4。詳しくは [`docs/ランチャー連携.md`](docs/ランチャー連携.md))。
+業務ツール統合ランチャー(`ViVio-Hellon/python-business-tools-launcher`)には、今ある起動ファイルを
+そのまま登録します。**業務ツール統合ツール(all-tools)と同じ作り**で、ランチャー専用のファイルはありません
+(統合 1.2.5。詳しくは [`docs/ランチャー連携.md`](docs/ランチャー連携.md))。
 
-| | ファイル |
+| | ファイル・方法 |
 |---|---|
-| 起動(PC ごとにどちらか) | `コイル梱包ツール.exe`(デスクトップ版)/ `Start.vbs`(ブラウザ版。`--no-browser` を渡すとブラウザーを開かない) |
-| 起動完了の確認 | `launcher_status.bat`(戻り値 0 = 使える / 2 = 起動中 / 1 = 動いていない) |
-| 終了 | `launcher_stop.bat`(処理中は止めずに 1。`--force` で中断して止める) |
+| 起動(PC ごとにどちらか) | `コイル梱包ツール.exe`(デスクトップ版。ランチャーの行のポートは空にする)/ `Start.vbs`(ブラウザ版。引数なし) |
+| 起動の確かめ | exe は窓が出たこと / ブラウザ版は `/api/health` の `app_id` と `ready` |
+| 終了(停止方法は「自動」) | exe は窓の ×(`WM_CLOSE`)/ ブラウザ版は `stop.bat` か `POST /api/shutdown`。どちらも**開いている画面に保存していない入力を確かめてから**止まる。`process_manager.py` の戻り値は 0 止めた / 2 止めなかった / 1 デスクトップ版が動いている |
 
 ## 手元のファイルの置き場所
 
@@ -184,10 +185,10 @@ Python を 3.12 から 3.13 に上げるなど **Store の Python の版を変�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.2.4 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
-| 梱包明細 | 0.13.14 | `modules/packing_details/config/app.json` |
-| ペナラベル | 1.5.15 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
-| 資材計算 | 0.2.13 | `modules/packing_material_calculation/config/app.json` |
+| コイル梱包ツール(統合ツール) | 1.2.5 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
+| 梱包明細 | 0.13.15 | `modules/packing_details/config/app.json` |
+| ペナラベル | 1.5.16 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| 資材計算 | 0.2.14 | `modules/packing_material_calculation/config/app.json` |
 
 機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
 だけを変えたら、統合ツールの版だけを上げます。決まりの全体は `docs/変更履歴.md`。

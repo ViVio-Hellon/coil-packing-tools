@@ -180,6 +180,29 @@ function renderStamps(stamps, tables, boxId, problem = "") {
   }
 }
 
+/** 置き場所の入力欄と、この端末の設定の鍵 */
+const PLACE_FIELDS = [["setLotDir", "lot_db_dir_setting"], ["setKonpoDir", "konpo_db_dir_setting"],
+                      ["setShareDir", "share_setting"], ["setHistoryDir", "history_setting"],
+                      ["setJsonDir", "json_setting"], ["setExportDir", "export_dir_setting"]];
+
+/**
+ * 設定の、まだ保存していない欄の名前(統合 1.2.5)。統合画面の「終了」・窓の × ・
+ * 外からの停止(ランチャー・stop.bat)の前に訊かれる。閉じた設定は数えない
+ * (開き直すと、保存してある値で入れ直す)。
+ */
+export function unsaved() {
+  const dialog = $("settingsDialog");
+  if (!local || !dialog || !dialog.open) return [];
+  const out = [];
+  for (const [id, key] of PLACE_FIELDS) {
+    if (($(id).value || "").trim() === String(local[key] || "").trim()) continue;
+    const head = $(id).getAttribute("aria-labelledby");
+    out.push(`設定: ${(head && $(head) && $(head).textContent.trim()) || id}`);
+  }
+  if (($("setQaValue").value || "").trim()) out.push("設定: QAマークの新しい文字");
+  return out;
+}
+
 /** この端末の設定。`fill` なら入力欄にも入れる(保存した直後は打った値を残す)。 */
 function renderLocal(body, { fill = false } = {}) {
   local = body;

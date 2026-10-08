@@ -769,7 +769,8 @@ class PageRoutes:
 
         # ---------------- ずれを直す ----------------
         fix = (
-            '<div class="card no-print"><h2>ずれを直す</h2>'
+            '<div class="card no-print" data-unsaved="位置合わせのずれ(「直す」を押していない)">'
+            '<h2>ずれを直す</h2>'
             '<div class="gaprow">印刷が'
             '<select id="calDirX"><option value="left">左</option>'
             '<option value="right">右</option></select>へ'
@@ -1042,7 +1043,7 @@ class PageRoutes:
 
         w45_style = "" if three else ' style="opacity:.4"'
         body = f'''
-<div class="card">
+<div class="card" data-unsaved="全サイズの入力(「決定」を押していない)">
   <h2>テスラ全サイズ</h2>
   <div class="inputs-3">
     <label>サイズ選択（型番マスタ）
@@ -1203,7 +1204,9 @@ class PageRoutes:
             for it in rows:
                 fields.append(self._setting_field(it))
             blocks.append(
-                f'<div class="card"><h2>{esc(group)} {_where("local")}</h2>'
+                # 保存していない欄は、統合画面の「終了」の前に訊かれる(統合 1.2.5。app.js)
+                f'<div class="card" data-unsaved="設定: {esc(group)}(保存していない欄)">'
+                f'<h2>{esc(group)} {_where("local")}</h2>'
                 f'<div class="setgrid">{"".join(fields)}</div></div>')
 
         if S.integrated(self.cfg):
@@ -1504,7 +1507,8 @@ class PageRoutes:
             '<thead><tr></tr></thead><tbody></tbody></table></div>'
             '</div>'
 
-            '<div class="card dismissable" id="mEdit" hidden>'
+            '<div class="card dismissable" id="mEdit" hidden'
+            ' data-unsaved="マスタ管理の行(書き込んでいない)">'
             '<h2><span id="mEditTitle">行を直す</span>'
             '<button type="button" class="x" id="mClose" title="閉じる">×</button></h2>'
             '<div class="setgrid" id="mFields"></div>'
@@ -1967,7 +1971,8 @@ class PageRoutes:
       lab.textContent = c;
       var inp = document.createElement("input");
       inp.type = "text";
-      inp.value = row ? (row[c] || "") : "";
+      // 開いたときの値を defaultValue に置く(書き込んでいない直しを見分ける。統合 1.2.5)
+      inp.defaultValue = row ? (row[c] || "") : "";
       if (M.editableColumns.indexOf(c) < 0) {
         // 直せない列は隠さずに出す。隠すと画面が壊れて見える
         inp.readOnly = true;

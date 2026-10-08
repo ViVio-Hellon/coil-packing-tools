@@ -15,7 +15,7 @@
   中身は**この画面を開いた1回目**に読む。
 */
 
-import { call, toast, $, $$, text as setText } from '../core.js';
+import { call, toast, $, $$, text as setText, watchUnsaved } from '../core.js';
 
 const el = {};
 let view = null;          // サーバが返した最後の状態。**画面の唯一の出どころ**
@@ -295,7 +295,8 @@ function fields(columns, row) {
     input.className = "input";
     input.id = `mf-${column.name}`;
     input.dataset.column = column.name;
-    input.value = text(row[column.name]);
+    // 開いたときの値を defaultValue に置く(書いていない直しを見分ける。統合 1.2.5)
+    input.defaultValue = text(row[column.name]);
     input.spellcheck = false;
     input.autocomplete = "off";
     box.appendChild(input);
@@ -370,6 +371,14 @@ async function send(path, body) {
   el.mEdit.close();
   return true;
 }
+
+// 行の窓で直して、まだ取り込み元へ書いていない(統合 1.2.5)
+watchUnsaved(() => {
+  if (!el.mEdit || !el.mEdit.open) return [];
+  const changed = [...el.mFields.querySelectorAll('input[data-column]')]
+    .some((input) => input.value !== input.defaultValue);
+  return changed ? ['マスタ管理の行(取り込み元へ書いていない)'] : [];
+});
 
 function saveRow() {
   if (editing === null) {

@@ -103,3 +103,48 @@ export function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// ------------------------------------------------------------------
+// まだ保存していない入力(統合 1.2.5)
+//
+// 統合画面の「終了」・窓の × ・外からの停止(ランチャー・stop.bat)の前に、
+// 統合画面が `window.cptUnsaved()` を呼んで訊く。返した名前があれば
+// 「閉じると消えます。閉じますか?」を出す。各面が自分の確かめ方を登録する。
+// 登録先は window に置く(同じファイルを別の URL で読んでも1つになる)。
+// ------------------------------------------------------------------
+const unsavedChecks = (window.__cptUnsavedChecks = window.__cptUnsavedChecks || []);
+
+export function watchUnsaved(check) {
+  unsavedChecks.push(check);
+}
+
+/**
+ * 面をまたいで残る「止めると消えるもの」(計算・発注票)。計算の面・発注票の面は別のページなので、
+ * ほかの面にいるあいだも訊けるよう、このタブの sessionStorage に名前を置く。
+ * その面が出ているときは、面が自分で確かめる(`owner` が立つ)。
+ */
+const PENDING_KEYS = { calc: 'cpt.material.pending.calc', order: 'cpt.material.pending.order' };
+
+export function markPending(kind, name) {
+  try {
+    if (name) sessionStorage.setItem(PENDING_KEYS[kind], name);
+    else sessionStorage.removeItem(PENDING_KEYS[kind]);
+  } catch (e) { /* 使えなくても動く(その面にいるあいだだけ訊く) */ }
+}
+
+export function readPending(kind) {
+  try { return sessionStorage.getItem(PENDING_KEYS[kind]) || ''; } catch (e) { return ''; }
+}
+
+const pendingOwners = (window.__cptPendingOwners = window.__cptPendingOwners || {});
+export function ownPending(kind) {
+  pendingOwners[kind] = true;
+}
+
+watchUnsaved(() => Object.keys(PENDING_KEYS)
+  .filter((kind) => !pendingOwners[kind] && readPending(kind))
+  .map((kind) => readPending(kind)));
+
+window.cptUnsaved = () => unsavedChecks
+  .flatMap((check) => { try { return check() || []; } catch (e) { return []; } })
+  .map((name) => `資材計算: ${name}`);

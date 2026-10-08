@@ -138,7 +138,6 @@ class BridgeProcessTest(unittest.TestCase):
         self.root = root
         env = isolated_env(root, COIL_PACKING_TOOLS_TOKEN=self.TOKEN,
                            PYTHONPATH=str(root / "nolisten"))
-        self.env = env
         self.proc = subprocess.Popen(
             [sys.executable, str(ROOT / "bridge.py")], env=env, cwd=str(ROOT),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -265,35 +264,6 @@ class BridgeProcessTest(unittest.TestCase):
         self.wait_ready()
         self.proc.stdin.close()
         self.assertEqual(self.proc.wait(timeout=30), 0, self.err[-15:])
-
-    def _manager(self, *args):
-        return subprocess.run([sys.executable, str(ROOT / "process_manager.py"), *args],
-                              env=self.env, cwd=str(ROOT), capture_output=True, timeout=120,
-                              encoding="utf-8", errors="replace")
-
-    def test_launcher_can_see_ready_and_stop_it_without_a_port(self):
-        """ランチャー連携(統合 1.2.4): ポートの無いデスクトップ版でも、外から
-        「起動完了か」を確かめ(launcher_status.bat)、止められる(launcher_stop.bat)。"""
-        self.wait_event("started")
-        self.wait_ready()
-        deadline = time.monotonic() + 30
-        done = self._manager("--any", "--status")
-        while done.returncode != 0 and time.monotonic() < deadline:
-            time.sleep(0.5)
-            done = self._manager("--any", "--status")
-        self.assertEqual(done.returncode, 0, (done.stdout, done.stderr[-800:]))
-        self.assertIn("デスクトップ版", done.stdout)
-
-        result: dict = {}
-        stopper = threading.Thread(target=lambda: result.update(done=self._manager("--any")))
-        stopper.start()
-        self.wait_event("quit", timeout=30)       # 外枠へ「終了してよい」
-        self.proc.stdin.close()                   # 外枠の代わりに閉じる
-        self.assertEqual(self.proc.wait(timeout=30), 0, self.err[-15:])
-        stopper.join(60)
-        self.assertEqual(result["done"].returncode, 0,
-                         (result["done"].stdout, result["done"].stderr[-800:]))
-        self.assertEqual(self._manager("--any", "--status").returncode, 1, "止まったら「動いていない」")
 
 
 class FatalTest(unittest.TestCase):

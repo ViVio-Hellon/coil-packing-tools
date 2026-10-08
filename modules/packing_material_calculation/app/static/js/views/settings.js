@@ -4,7 +4,7 @@
   ここがするのは「打たれた値をサーバへ渡す」「返ってきた一式を写す」だけ。
   どこを実際に見に行くか、そこに届くかの判断はすべてサーバ側にある。
 */
-import { call, toast, $, $$, text, esc } from '../core.js';
+import { call, toast, $, $$, text, esc, watchUnsaved } from '../core.js';
 import { refresh as refreshMaster } from './master.js';
 
 let view = null;
@@ -488,6 +488,13 @@ if (pwSave) {
 }
 
 // 最初の状態はテンプレートが埋め込んである(共有フォルダに触らずに分かる)
+// 置き場所の欄で、まだ「この欄を保存」を押していないもの(統合 1.2.5)。
+// 欄はサーバの値で作り直すので、作ったときの値(defaultValue)と比べる
+watchUnsaved(() => $$('#fields .setrow').filter((row) => {
+  const input = $('input.input', row);
+  return input && input.value !== input.defaultValue;
+}).map((row) => `設定: ${(($('.setrow__k', row) || {}).firstChild || {}).textContent || row.dataset.key}`.trim()));
+
 if (window.MASTER_FRAME && window.MASTER_FRAME.auth) {
   renderAuth(window.MASTER_FRAME.auth);
 }

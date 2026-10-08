@@ -24,6 +24,8 @@
   var TOKEN = S.token || "";
   var TAB_KEY = "cpt.tab";
   var MISSES_BEFORE_OFFLINE = 2;
+  // デスクトップ版(窓の中)。外からの停止は窓の × で来るので、入口にたずねに行かない
+  var DESKTOP = !!(window.__TAURI__ && window.__TAURI__.core);
   var CLOCK_TICK_MS = 5000;
   var CLOCK_JUMP_MS = 30000;
 
@@ -307,6 +309,8 @@
 
   function payload(extra) {
     var body = { state: visibility(), client: CLIENT };
+    // 外からの停止のとき、入口が「閉じる前の頼み」を出す相手(ブラウザ版だけ。統合 1.2.5)
+    if (!DESKTOP) body.page = CLIENT;
     Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
     return JSON.stringify(body);
   }
@@ -362,6 +366,51 @@
     if (jumped) resume("sleep");
   }, CLOCK_TICK_MS);
 
+  // ---------------------------------------------------------- 閉じる前(統合 1.2.5)
+  // 3機能の画面(と開いているログ)に「まだ保存していない入力」を訊く。各画面は
+  // `window.cptUnsaved()` で名前を返す(同じ origin なので直接呼べる)。あれば1つの確認に
+  // まとめ、「閉じない」ならその画面を見せて止めない。all-tools の prepareFrames と同じ役目。
+  var discarded = null;     // 「閉じてよい」と答えた中身と時刻(続けて2度は訊かない)
+  function askFrame(frame) {
+    try {
+      var fn = frame && frame.contentWindow && frame.contentWindow.cptUnsaved;
+      return typeof fn === "function" ? (fn() || []).map(String) : [];
+    } catch (e) {
+      return [];            // 読めない画面(読み込み中・別の origin)は数えない
+    }
+  }
+  function prepareFrames() {
+    var names = [], firstKey = "";
+    panes.forEach(function (p) {
+      var found = askFrame(p.querySelector("iframe"));
+      if (found.length && !firstKey) firstKey = p.id.replace(/^pane-/, "");
+      names = names.concat(found);
+    });
+    var logDlg = $("logDialog");
+    if (logDlg && logDlg.open) names = names.concat(askFrame(logDlg.querySelector("iframe")));
+    if (!names.length) return true;
+    var stamp = JSON.stringify(names);
+    if (discarded && discarded.stamp === stamp && Date.now() - discarded.at < 120000) return true;
+    if (!window.confirm("まだ保存していない入力があります:\n\n" +
+                        names.map(function (n) { return "・" + n; }).join("\n") +
+                        "\n\n閉じると、この入力は消えます。閉じますか?")) {
+      if (firstKey) show(firstKey);
+      return false;
+    }
+    discarded = { stamp: stamp, at: Date.now() };
+    return true;
+  }
+
+  function post(path, body) {
+    return fetch(path, { method: "POST", cache: "no-store",
+                         headers: { "Content-Type": "application/json", "X-Tool-Token": TOKEN },
+                         body: JSON.stringify(body || {}) })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; })
+          .then(function (j) { return { status: r.status, body: j || {} }; });
+      });
+  }
+
   // ---------------------------------------------------------- 終了
   function markStopped() {
     stopped = true;
@@ -373,29 +422,76 @@
   // 機能の画面の「終了」(資材計算の帯)で止まったときも、同じ表示にする。
   // 知らせが無いと、外枠は「バックエンドと通信できません」を出していた
   window.addEventListener("message", function (e) {
-    if (e.origin !== location.origin || !e.data || e.data.type !== "cpt:stopped") return;
-    markStopped();
+    if (e.origin !== location.origin || !e.data) return;
+    if (e.data.type === "cpt:stopped") markStopped();
+    // 機能の画面の「終了」(資材計算の帯)は、統合画面の「終了」と同じ流れにする(統合 1.2.5)
+    if (e.data.type === "cpt:quit") requestQuit();
   });
 
+  /**
+   * 統合画面の「終了」。窓の × (デスクトップ版)もここを通る。
+   *
+   * 「終了します。よろしいですか」は訊かない(統合 1.2.5。all-tools と同じ)。訊くのは
+   *   ・保存していない入力があるとき(閉じると消える)
+   *   ・取り込みなど途中の処理があるとき(「中断して終了しますか」→ はい なら中断して止める)
+   * だけ。ランチャーが窓を閉じる(× と同じ)ときに、毎回確認で止まらないため。
+   */
+  function requestQuit() {
+    if (!quit || quit.disabled || stopped) return;
+    if (!prepareFrames()) return;
+    quit.disabled = true;
+    // 打ちかけはいま確かめた。入口に「画面へ訊く」をもう一度させない
+    post("/api/shutdown", { screens_ready: true })
+      .then(function (res) {
+        if (res.body.stopped) { markStopped(); return; }
+        if (res.status === 409 && res.body.reason === "busy") {
+          var text = (res.body.message || "実行中の処理があります") + "\n\n中断して終了しますか?";
+          if (!window.confirm(text)) { quit.disabled = false; return; }
+          return post("/api/shutdown", { force: true }).then(function (again) {
+            if (again.body.stopped) { markStopped(); return; }
+            quit.disabled = false;
+            window.alert(again.body.message || ("終了できませんでした (HTTP " + again.status + ")"));
+          });
+        }
+        quit.disabled = false;
+        window.alert(res.body.message || ("終了できませんでした (HTTP " + res.status + ")"));
+      })
+      .catch(function () { quit.disabled = false; window.alert("終了の要求を送れませんでした。"); });
+  }
+
   var quit = $("quit");
-  if (quit) {
-    quit.addEventListener("click", function () {
-      if (!window.confirm("このアプリを終了します。3つの機能とも終わります。よろしいですか？")) return;
-      quit.disabled = true;
-      fetch("/api/shutdown", { method: "POST", cache: "no-store",
-                               headers: { "Content-Type": "application/json", "X-Tool-Token": TOKEN },
-                               body: "{}" })
-        .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-        .then(function (res) {
-          if (res.body && res.body.stopped) {
-            markStopped();
-            return;
-          }
-          quit.disabled = false;
-          window.alert((res.body && res.body.message) || ("終了できませんでした (HTTP " + res.status + ")"));
-        })
-        .catch(function () { quit.disabled = false; window.alert("終了の要求を送れませんでした。"); });
-    });
+  if (quit) quit.addEventListener("click", requestQuit);
+
+  // ---------------------------------------------------------- 外からの「閉じて」(ブラウザ版)
+  // ランチャー・stop.bat が止めるとき(`/api/shutdown`)、入口は開いている画面に
+  // 「閉じる前の頼み」を出して少し待つ(`/api/close-ask`)。画面は毎秒たずね、頼まれたら
+  // 先に「確かめています」(`working`)を返してから、「終了」と同じく保存していない入力を訊く。
+  // 閉じてよければ `ok`(入口が止まる)、「閉じない」なら `refused`(入口は止まらない)。
+  // デスクトップ版は外から止める口が窓の × だけなので、たずねない。
+  var closeAsking = 0, closeAnswered = 0;
+  function watchCloseAsk() {
+    if (DESKTOP || stopped || closeAsking) return;
+    fetch("/api/close-ask?page=" + encodeURIComponent(CLIENT),
+          { cache: "no-store", headers: { "X-Tool-Token": TOKEN } })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (j) {
+        var seq = Number((j && j.seq) || 0);
+        if (!seq || seq === closeAnswered || closeAsking || stopped) return;
+        closeAsking = seq;
+        return post("/api/close-answer", { page: CLIENT, seq: seq, state: "working" })
+          .catch(function () { return null; })
+          .then(function () {
+            var ok = true;
+            try { ok = prepareFrames(); } catch (e) { ok = true; }
+            return post("/api/close-answer", { page: CLIENT, seq: seq, state: ok ? "ok" : "refused" });
+          })
+          .then(function (res) {
+            closeAnswered = seq;
+            if (res && res.body && res.body.stopping) markStopped();
+          });
+      })
+      .catch(function () { /* 入口に届かない。次の回に */ })
+      .then(function () { closeAsking = 0; });
   }
 
   // ---------------------------------------------------------- 開始
@@ -409,4 +505,5 @@
   catch (e) { previous = ""; }
   alive({ reason: "open", replaces: previous });
   setInterval(function () { alive({ reason: "timer" }); }, S.alivePollMs || 20000);
+  if (!DESKTOP) setInterval(watchCloseAsk, 1000);
 })();

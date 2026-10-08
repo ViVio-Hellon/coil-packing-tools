@@ -219,6 +219,12 @@ class Window:
     def close_current(self):
         return wd("DELETE", f"/session/{self.sid}/window")
 
+    def alert_text(self):
+        try:
+            return wd("GET", f"/session/{self.sid}/alert/text")
+        except RuntimeError:
+            return ""
+
     def accept(self):
         try:
             wd("POST", f"/session/{self.sid}/alert/accept", {})
@@ -582,20 +588,34 @@ def scenario_main(rig: Rig):
         w.frame(None)
         w.shot(rig.shots / "desktop_main.png")
 
-        # ---- 「終了」: 確かめで「キャンセル」なら終わらない・「OK」で終わる
+        # ---- 「終了」(統合 1.2.5): 確かめは保存していない入力があるときだけ。
+        # 「閉じない」なら終わらない・入力を片付ければ確かめなしで終わる
         exe = rig.exe_pids()
+        w.tab("details")
+        w.type("#lotNo", "L51")                   # 7桁になっていない LOT(送っていない入力)
+        w.switch(w.main)
+        w.frame(None)
         w.click("#quit")
         time.sleep(0.8)
         dismissed = w.dismiss()
         time.sleep(1.5)
-        check("「終了」の確かめで「キャンセル」なら終わらない",
+        check("「終了」: 保存していない入力があれば確かめ、「キャンセル」なら終わらない",
               dismissed and exe and len(rig.running(exe)) == len(exe)
               and w.text("#conn") == "接続OK", {"確かめ": dismissed, "接続": w.text("#conn")})
+        w.tab("details")
+        w.js("document.querySelector('#lotNo').value = window.APP.state.lot_no || ''")
+        w.switch(w.main)
+        w.frame(None)
         w.click("#quit")
         time.sleep(0.8)
-        w.accept()
+        # 片付けた LOT は並ばない。上で作った発注票は記録していないので訊く(止めると消える)
+        said = w.alert_text()
+        asked = w.accept()
         gone = until(lambda: not rig.running(exe), 15)
-        check("「終了」で exe も Python も終わる", gone and not rig.bridge_pids(), rig.bridge_pids())
+        check("「終了」: 片付けた入力は訊かず、記録していない発注票だけ訊いて「OK」で終わる",
+              asked and "発注票" in said and "梱包明細" not in said
+              and gone and not rig.bridge_pids(),
+              {"確かめ": said or asked, "残り": rig.bridge_pids()})
     finally:
         w.end()
     bad = [line for line in rig.log_text().splitlines() if "| ERROR |" in line or "Traceback" in line]
@@ -620,19 +640,32 @@ def scenario_close_and_second(rig: Rig):
         check("2つ目の exe は起動せずに終わる", code == 0, code)
         check("1つ目はそのまま使える", first and len(rig.running(first)) == len(first)
               and w.text("#conn") == "接続OK", w.text("#conn"))
-        # 窓の ×: 統合画面の「終了」と同じ確かめ(キャンセルなら残る・OK で終わる)
+        # 窓の ×(ランチャーの「窓を閉じる」も同じ): 統合画面の「終了」と同じ流れ。
+        # 保存していない入力があるときだけ確かめる(キャンセルなら残る・OK で終わる)
+        w.tab("pena")
+        before = w.text("#kensaNo")
+        w.type("#kensaNo", "W1234")               # ボタンを押していない新検番
+        w.switch(w.main)
+        w.frame(None)
         sent = press_close_button(rig.display, TITLE)
         dismissed = until(w.dismiss, 10)
         time.sleep(4.0)                           # 外枠は3秒待って、受け取られなければ終える
-        check("窓の × で確かめが出て「キャンセル」なら終わらない",
+        check("窓の × : 保存していない入力があれば確かめ、「キャンセル」なら終わらない",
               dismissed and len(rig.running(first)) == len(first)
               and w.text("#conn") == "接続OK", {"送った窓": sent, "確かめ": dismissed})
+        # 入力を片付けてから × : 確かめずに終わる(ランチャーが窓を閉じて止めるときの動き)
+        w.tab("pena")
+        w.js("document.querySelector('#kensaNo').value = arguments[0]", before)
+        w.switch(w.main)
+        w.frame(None)
         sent = press_close_button(rig.display, TITLE)
-        accepted = until(w.accept, 10)
+        time.sleep(1.0)
+        said = w.alert_text()
+        asked = w.accept()
         gone = until(lambda: not rig.running(first), 15)
-        check("窓の × で「OK」なら exe も Python も終わる",
-              accepted and gone and not rig.bridge_pids(),
-              {"確かめ": accepted, "残り": rig.bridge_pids()})
+        check("窓の × : 入力が無ければ確かめずに exe も Python も終わる",
+              not asked and gone and not rig.bridge_pids(),
+              {"確かめ": said or asked, "残り": rig.bridge_pids()})
     finally:
         w.end()
 
@@ -694,6 +727,15 @@ def scenario_failures(rig: Rig):
         h = rig.app.start(timeout=40)
         check("デスクトップ版が動いているあいだ、ブラウザ版は起動しない",
               not h and "デスクトップ版のコイル梱包ツールが動いています" in rig.log_text(), h)
+        # stop.bat(process_manager.py)はデスクトップ版を止めない(窓の × か「終了」で閉じる)。
+        # 戻り値 1 で知らせ、窓を前に出す(all-tools と同じ。統合 1.2.5)
+        exe = rig.exe_pids()
+        done = subprocess.run([sys.executable, str(ROOT / "process_manager.py")], env=rig.env(),
+                              cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        time.sleep(1.0)
+        check("デスクトップ版が動いているあいだ、stop.bat は止めずに戻り値 1",
+              done.returncode == 1 and "デスクトップ版" in done.stdout
+              and len(rig.running(exe)) == len(exe), (done.returncode, done.stdout[-120:]))
         w.click("#quit")
         time.sleep(0.8)
         w.accept()

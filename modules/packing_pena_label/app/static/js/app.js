@@ -455,6 +455,34 @@
     }
   });
 
+  // ---------------------------------------------------------- 保存していない入力
+  // 統合画面の「終了」・窓の × ・外からの停止(ランチャー・stop.bat)の前に、統合画面が
+  // `window.cptUnsaved()` を呼んで訊く(統合 1.2.5)。名前を返せば「閉じると消えます。
+  // 閉じますか?」が出る。`data-unsaved` の枠の中の欄は、描いたときの値(defaultValue)と比べる
+  // (保存すると読み直すので、保存したものは描いたときの値になる)。
+  function changedField(el) {
+    if (el.readOnly || el.disabled || el.type === "password" || el.type === "button") { return false; }
+    if (el.type === "checkbox" || el.type === "radio") { return el.checked !== el.defaultChecked; }
+    if (el.tagName === "SELECT") {
+      if (el.multiple) { return false; }
+      var def = Array.prototype.findIndex.call(el.options, function (o) { return o.defaultSelected; });
+      return el.selectedIndex !== (def < 0 ? 0 : def);
+    }
+    return el.value !== el.defaultValue;
+  }
+  var unsavedChecks = [];
+  window.cptUnsaved = function () {
+    var out = [];
+    $$("[data-unsaved]").forEach(function (box) {
+      if (box.hidden || (box.parentElement && box.parentElement.closest("[hidden]"))) { return; }
+      if ($$("input, select, textarea", box).some(changedField)) { out.push(box.getAttribute("data-unsaved")); }
+    });
+    unsavedChecks.forEach(function (check) {
+      try { out = out.concat(check() || []); } catch (e) { /* 訊けなくても閉じられる */ }
+    });
+    return out.map(function (name) { return "ペナラベル: " + name; });
+  };
+
   // ---------------------------------------------------------- メイン画面
   var form = $("#mainForm");
   if (!form) { return; }
@@ -485,8 +513,21 @@
     return st;
   }
 
+  // 最後にサーバへ渡した入力(ボタン・サイズ選択のたびに `collect()` を渡し、答えで描き直す)
+  var sentForm = null;
+  function formKey() {
+    var st = collect();
+    return JSON.stringify([st.kensaNo, st.weight1, st.weight2, st.coilH, st.tip]);
+  }
+  unsavedChecks.push(function () {
+    return (sentForm !== null && formKey() !== sentForm)
+      ? ["新検番・重量・高さ・チップボール(ボタンを押していない入力)"] : [];
+  });
+
   function paint(state) {
     if (!state) { return; }
+    // 描き終えたら、いまの入力を「渡したもの」として覚える
+    setTimeout(function () { sentForm = formKey(); }, 0);
     $("#lblKensaNo").textContent = state.lblKensaNo || "";
     $("#lblSize1").textContent = state.lblSize1 || "";
     $("#lblWeight1").textContent = state.lblWeight1 || "";
@@ -695,4 +736,5 @@
     paint(boot);
   }
   markSelectedRow();
+  setTimeout(function () { if (sentForm === null) { sentForm = formKey(); } }, 0);
 })();

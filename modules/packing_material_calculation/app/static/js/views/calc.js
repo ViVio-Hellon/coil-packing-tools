@@ -7,7 +7,7 @@
   「どの規則で決まったか」は `flags` で来るので、対応する欄に印を付ける。
   色だけに頼らないよう、見出しにも印が付く(coil.css `.f--why`)。
 */
-import { call, toast, $, $$, text, esc } from '../core.js';
+import { call, toast, $, $$, text, esc, watchUnsaved, markPending, readPending, ownPending } from '../core.js';
 
 const FLAG_TO_FIELD = {
   weight: '#w-梱包重量',
@@ -16,10 +16,35 @@ const FLAG_TO_FIELD = {
 };
 
 let lastView = null;
+// チェックリストへ積んだときの入力と結果(積んだあと変えていなければ、閉じても困らない)。
+// 面を移っても覚えておく(このタブの sessionStorage)
+const ADDED_KEY = 'cpt.material.calc.added';
+let addedKey = '';
+ownPending('calc');
+// バリ揃えの上下の本数を最後に計算・表示した値
+let burrShown = null;
+
+function viewKey(v) {
+  return v ? JSON.stringify([v.input, v.result]) : '';
+}
 
 // ------------------------------------------------------------------
+/** 積んでいない計算の名前(無ければ空)。ほかの面にいるあいだも訊けるよう覚えておく */
+function calcPending() {
+  const shown = (lastView && lastView.input && lastView.input.LOT) || '';
+  return shown && lastView.result && lastView.result.台数 && viewKey(lastView) !== addedKey
+    ? `計算した LOT ${shown}(チェックリストへ積んでいない)` : '';
+}
+
+function rememberAdded(key) {
+  addedKey = key;
+  try { sessionStorage.setItem(ADDED_KEY, key); } catch (e) { /* 使えなくても動く */ }
+}
+
 function render(v) {
   lastView = v;
+  // 描き終えてから(描くたびに)、積んでいない計算を覚え直す
+  setTimeout(() => markPending('calc', calcPending()), 0);
   const o = v.order, r = v.result;
 
   // ---- 入力(サーバが整形した値で上書きする) ----
@@ -196,7 +221,11 @@ $('#clear').addEventListener('click', async () => {
 $('#add').addEventListener('click', async () => {
   const r = await call('/api/checklist/add',
                        { サイズ確定: $('#size-fixed').checked });
-  if (r.ok) toast(`チェックリストの ${r.行番号} 行目に積みました`);
+  if (r.ok) {
+    rememberAdded(viewKey(lastView));
+    markPending('calc', '');
+    toast(`チェックリストの ${r.行番号} 行目に積みました`);
+  }
   else toast(r.message || 'チェックリストへ積めません', 'warn');
 });
 
@@ -207,6 +236,7 @@ function showBurr(b) {
   if (!b) return;
   $('#upper').value = b.上本数;
   $('#lower').value = b.下本数;
+  burrShown = [$('#upper').value, $('#lower').value];
   text($('#b-残'), b.残り検入数); text($('#b-積数'), b.積数);
   text($('#b-上'), b.上台数);     text($('#b-下'), b.下台数);
   text($('#b-台数'), b.台数);
@@ -245,7 +275,35 @@ $('#burr-send').addEventListener('click', async () => {
 });
 
 // ------------------------------------------------------------------
+/**
+ * 閉じると消えるもの(統合 1.2.5)。計算の中身はサーバのメモリにだけあり、
+ * 止めると消える(チェックリストへ積んだものは残る)。
+ */
+watchUnsaved(() => {
+  const out = [];
+  const lot = $('#lot').value || '';
+  const shown = (lastView && lastView.input && lastView.input.LOT) || '';
+  if (lot && lot !== shown) out.push('LOT(7桁になっていない入力)');
+  else if (calcPending()) out.push(calcPending());
+  const burr = [$('#upper').value, $('#lower').value];
+  if (burr.some((v) => String(v).trim() !== '')
+      && (!burrShown || burr[0] !== burrShown[0] || burr[1] !== burrShown[1])) {
+    out.push('バリ揃えの上下の本数(「計算」を押していない)');
+  }
+  return out;
+});
+
 (async function start() {
   const r = await call('/api/calc');
-  if (r.ok) render(r.view);
+  if (r.ok) {
+    // 面を移って戻ってきた: 覚えている「積んだときの中身」と比べる。覚えていなければ
+    // (このタブで初めて・覚えられない)前に積んだかは分からないので、積んだものとみなす
+    // (読み直しのたびに「積んでいない」と訊かない)
+    let known = null;
+    try { known = sessionStorage.getItem(ADDED_KEY); } catch (e) { known = null; }
+    addedKey = known !== null ? known
+      : (readPending('calc') ? '' : viewKey(r.view));
+    render(r.view);
+  }
+  burrShown = [$('#upper').value, $('#lower').value];
 }());

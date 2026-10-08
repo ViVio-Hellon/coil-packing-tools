@@ -48,7 +48,7 @@ from flask import (Blueprint, Flask, current_app, g, jsonify, redirect, render_t
 from markupsafe import escape
 from werkzeug.exceptions import HTTPException
 
-from common import (app_config, boot_screen, idle_exit, incidents, local_settings,
+from common import (app_config, boot_screen, close_ask, idle_exit, incidents, local_settings,
                     log_distribution, logging_utils, manual, modes, security, versions)
 from common.logging_utils import get_logger
 
@@ -108,6 +108,8 @@ def create_app(mode: str = modes.MAIN, *, token: Optional[str] = None,
         # ペナラベルの API にもトークンを要求する(移植元には無かった)
         PENA_REQUIRE_TOKEN=True,
         MODULES=[],
+        # 外から止める前に、開いている統合画面へ「閉じる前の頼み」を出す(統合 1.2.5)
+        CLOSE_ASK=close_ask.CloseAsk(),
     )
     # **最初に差し込む**(要求の印を付けてから、ほかの関門が断る ── 断った行にも印が付く)
     _install_error_trail(app)
@@ -606,28 +608,95 @@ def _shell_blueprint() -> Blueprint:
         replaces = str(body.get("replaces", ""))
         watching = idle_exit.signal(client=client, leaving=leaving, hidden=hidden,
                                     replaces=replaces)
+        # 外からの停止のとき「閉じる前の頼み」を出す相手(ブラウザ版の統合画面だけが `page` を送る)
+        page = str(body.get("page", ""))
+        if page:
+            asks = current_app.config["CLOSE_ASK"]
+            if leaving:
+                asks.gone(page)       # 画面を閉じた(sendBeacon)。もう頼まない
+            else:
+                asks.seen(page)
         return jsonify({"ok": True, "pid": os.getpid(), "watching": watching})
+
+    @bp.get("/api/close-ask")
+    def close_ask_poll():
+        """ブラウザ版の統合画面が毎秒たずねる: 外から「閉じて」と頼まれていないか(統合 1.2.5)。"""
+        denied = _need_token()
+        if denied:
+            return denied
+        asks = current_app.config["CLOSE_ASK"]
+        page = request.args.get("page", "")
+        asks.seen(page)
+        return jsonify({"ok": True, "seq": asks.pending(page)})
+
+    @bp.post("/api/close-answer")
+    def close_answer():
+        """画面の返事(`working` 確かめている / `ok` 閉じてよい / `refused` 閉じない)。
+
+        頼んだ側がもう返事を待っていなければ(409 asking を返したあと)、`ok` がそろった
+        時点で入口が自分で止まる。そのときも途中の処理があれば止めない。
+        """
+        denied = _need_token()
+        if denied:
+            return denied
+        asks = current_app.config["CLOSE_ASK"]
+        body = request.get_json(silent=True) or {}
+        page = str(body.get("page") or "")
+        state = str(body.get("state") or "")
+        if state not in ("working", "ok", "refused"):
+            return security.error_json("bad_state", "返事が読めません", 400)
+        try:
+            seq = int(body.get("seq") or 0)
+        except (TypeError, ValueError):
+            seq = 0
+        asks.seen(page)
+        log.info("統合画面の返事: %s (頼み %s)", state, seq)
+        if not asks.answer(page, seq, state):
+            return jsonify({"ok": True, "stopping": False, "message": "頼みは取り下げられていました"})
+        if state != "ok" or asks.someone_waiting():
+            return jsonify({"ok": True, "stopping": state == "ok"})
+        if asks.verdict(asks.live()) != "ok":
+            return jsonify({"ok": True, "stopping": False})
+        return _stop_now(force=False, why="外からの停止の頼み(画面が確かめたあと)")
 
     @bp.post("/api/shutdown")
     def shutdown():
         """安全な停止(基盤仕様書 2.8)。トークン必須。
 
-        資材計算の取り込みが走っている間は、既定では止めない(409)。
+        資材計算の取り込みが走っている間は、既定では止めない(409 busy)。
         `{"force": true}` で中断してでも止める(`stop.bat --force`)。
+
+        **外から(ランチャー・stop.bat)の頼みは、開いている統合画面に確かめてから**
+        (統合 1.2.5。`common/close_ask.py`)。画面が「閉じない」を選んだら 409 refused、
+        まだ確かめているなら 409 asking(済めば入口が自分で止まる)。統合画面の
+        「終了」・窓の × は、自分で確かめてから頼む(`screens_ready`)。
         """
         if not security.token_ok(current_app.config["TOKEN"]):
             return security.error_json("bad_token", "この画面は無効になりました", 401)
         body = request.get_json(silent=True) or {}
+        force = bool(body.get("force"))
         running = _busy_labels()
-        if running and not body.get("force"):
-            return jsonify({"stopped": False, "reason": "busy", "running": running,
-                            "message": "実行中の処理があります: " + ", ".join(running)}), 409
+        if running and not force:
+            return _busy_reply(running)
         if _shutdown_hook is None:
             return jsonify({"stopped": False, "reason": "no_hook",
                             "message": "このプロセスは停止操作に対応していません"}), 501
-        log.info("停止要求を受け付けました")
-        threading.Timer(SHUTDOWN_DELAY_SEC, _shutdown_hook).start()
-        return jsonify({"stopped": True, "message": "終了します"})
+        asks = current_app.config["CLOSE_ASK"]
+        if not force and not body.get("screens_ready"):
+            pages = asks.live()
+            if pages:
+                asks.ask()
+                log.info("外からの停止の頼み: 統合画面(%d枚)に確かめてもらいます", len(pages))
+                verdict = asks.wait(pages, close_ask.CloseAsk.WAIT_SEC)
+                if verdict == "refused":
+                    return jsonify({"stopped": False, "reason": "refused",
+                                    "running": [close_ask.REFUSED_MESSAGE],
+                                    "message": close_ask.REFUSED_MESSAGE}), 409
+                if verdict != "ok":
+                    return jsonify({"stopped": False, "reason": "asking",
+                                    "running": [close_ask.ASKING_MESSAGE],
+                                    "message": close_ask.ASKING_MESSAGE}), 409
+        return _stop_now(force=force, why="停止要求")
 
     _log_routes(bp)
     _manual_routes(bp)
@@ -912,6 +981,27 @@ def _tail(path: Path, max_bytes: int) -> list:
     text = data.decode("utf-8", errors="replace")
     lines = text.splitlines()
     return lines[1:] if size > max_bytes else lines
+
+
+def _busy_reply(running: list[str]):
+    return jsonify({"stopped": False, "stopping": False, "reason": "busy", "running": running,
+                    "message": "実行中の処理があります: " + ", ".join(running)}), 409
+
+
+def _stop_now(*, force: bool, why: str):
+    """止める(応答を返してから)。途中の処理があれば止めない(`force` 以外)。"""
+    if not force:
+        running = _busy_labels()
+        if running:
+            log.info("%s: 実行中の処理があるので止めません (%s)", why, ", ".join(running))
+            return _busy_reply(running)
+    if _shutdown_hook is None:
+        return jsonify({"stopped": False, "reason": "no_hook",
+                        "message": "このプロセスは停止操作に対応していません"}), 501
+    log.info("%sを受け付けました (force=%s)", why, force)
+    current_app.config["CLOSE_ASK"].done()
+    threading.Timer(SHUTDOWN_DELAY_SEC, _shutdown_hook).start()
+    return jsonify({"stopped": True, "stopping": True, "message": "終了します"})
 
 
 def _busy_labels() -> list[str]:

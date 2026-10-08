@@ -656,7 +656,6 @@ def start_bridge(mode: str, *, token: str = "", server_factory) -> int:
     srv = server_factory(mode, token or secrets.token_urlsafe(24))
     thread = server_module.run_in_background(srv)
     log().info("待機画面まで %.2f秒(デスクトップ版)", time.monotonic() - _BOOT_AT)
-    watch = None
     try:
         try:
             srv.build()
@@ -665,35 +664,13 @@ def start_bridge(mode: str, *, token: str = "", server_factory) -> int:
             srv.boot.mark_error(f"アプリを組み立てられませんでした: {exc}")
             _hold_until_stopped(srv, thread)
             return 1
-        # 外から止める・起動完了を確かめる口(ランチャー連携。ポートが無いのでファイルで)
-        watch = _desktop_watch(srv)
         # 窓を閉じたら外枠が終わらせるので、心拍による自動終了は使わない
         _initialize(srv, watch_idle=False)
         _hold_until_stopped(srv, thread)
         return 0
     finally:
-        if watch is not None:
-            watch.cancel()
         _close_modules()
         log().info("終了しました: mode=%s(デスクトップ版)", mode)
-
-
-def _desktop_watch(srv):
-    """デスクトップ版の外からの口(`common/desktop_control.py`)。用意できなくても起動は続ける。"""
-    try:
-        import app as app_module
-        from common import app_config, desktop_control
-
-        conf = srv.app.config
-        watch = desktop_control.Watch(
-            app_id=app_config.app_id(),
-            state=lambda: {"ready": conf.get("READY"), "stage": conf.get("STAGE")},
-            busy=app_module._busy_labels, stop=srv.stop)
-        watch.start()
-        return watch
-    except Exception as exc:                      # noqa: BLE001 - 起動を止めない
-        log().warning("外から止める口を用意できませんでした(そのまま続けます): %s", exc)
-        return None
 
 
 def _initialize(srv, *, watch_idle: bool = True) -> None:

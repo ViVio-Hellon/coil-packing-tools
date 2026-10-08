@@ -4,7 +4,7 @@
   【重複は止めずに知らせる】
   同じロットが2週間以内に出ていたら確認を出す。続けるかどうかは人が決める。
 */
-import { call, toast, token, $, esc, BASE } from '../core.js';
+import { call, toast, token, $, esc, BASE, watchUnsaved, markPending, readPending, ownPending } from '../core.js';
 
 function sheetHtml(s) {
   const rows = s.rows.map(r => `<tr>
@@ -80,11 +80,33 @@ $('#build').addEventListener('click', () => build(false));
 $('#commit').addEventListener('click', async () => {
   if (!confirm('この内容を発注済みとして記録します。よろしいですか？')) return;
   const r = await call('/api/order/commit', {});
+  if (r.ok) { committed = true; markPending('order', ''); }
   toast(r.ok ? `${r.saved} 件を履歴に残しました`
              : (r.message || '記録できません'), r.ok ? '' : 'warn');
 });
 
+// 作った発注票はサーバのメモリにだけある。記録していなければ、閉じると消える(統合 1.2.5)。
+// 面を移っても訊けるよう、このタブに覚えておく
+const ORDER_PENDING = '発注票(「発注済みとして記録」をしていない)';
+let committed = false;
+ownPending('order');
+$('#build').addEventListener('click', () => { committed = false; });
+function orderPending() {
+  return !committed && !$('#commit').hidden ? ORDER_PENDING : '';
+}
+// 作った・やめた・記録したのたびに覚え直す(ボタンの見え隠れを見る)
+new MutationObserver(() => markPending('order', orderPending()))
+  .observe($('#commit'), { attributes: true, attributeFilter: ['hidden'] });
+watchUnsaved(() => (orderPending() ? [orderPending()] : []));
+
 (async function start() {
   const r = await call('/api/order');
-  if (r.ok && r.sheets.length) render(r.sheets, []);
+  if (r.ok && r.sheets.length) {
+    // 開き直したとき: このタブで「記録していない」と覚えていれば訊く。覚えていなければ、
+    // 前に記録したかは分からないので訊かない(読み直しのたびに訊かない)
+    committed = !readPending('order');
+    render(r.sheets, []);
+  } else if (r.ok) {
+    markPending('order', '');       // 発注票が無い(入口を起こし直した など)。覚えを消す
+  }
 }());

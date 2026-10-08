@@ -37,17 +37,7 @@ sys.path.insert(0, str(_ROOT))
 # 統合版でも入口は3本のまま。3機能ぶんの Start.vbs を並べない ──
 # 1つのプロセスに3機能が同居するので、押すものを分ける必要が無い。
 # **入口を増やすほど、同じ不具合が別の経路に残る。**
-#
-# ほかに、人ではなく**業務ツール統合ランチャーが呼ぶ口**が2本ある(統合 1.2.4):
-#
-#   launcher_stop.bat   … ブラウザ版・デスクトップ版の動いているほうを止める
-#   launcher_status.bat … 起動完了か(戻り値 0 / 2 / 1)
-#
-# 中身は process_manager.py を呼ぶだけ(止め方・確かめ方を2本持たない)。
-# 人が押すものではないので、一時停止(pause)しない
-HUMAN_BATCH_FILES = ("start.bat", "stop.bat")
-LAUNCHER_FILES = ("launcher_stop.bat", "launcher_status.bat")
-BATCH_FILES = HUMAN_BATCH_FILES + LAUNCHER_FILES
+BATCH_FILES = ("start.bat", "stop.bat")
 VBS_FILES = ("Start.vbs",)
 LAUNCH_FILES = BATCH_FILES + VBS_FILES
 
@@ -253,7 +243,7 @@ class BatchTests(unittest.TestCase):
 
     def test_失敗したら理由を読ませてから閉じる(self) -> None:
         """`pause` が無いと、窓が一瞬で消えて何も読めない。"""
-        for name in HUMAN_BATCH_FILES:
+        for name in BATCH_FILES:
             with self.subTest(name=name):
                 self.assertIn("pause", read_text(name))
 
@@ -263,16 +253,6 @@ class BatchTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(target, read_text(name))
                 self.assertTrue((_ROOT / target).exists())
-
-    def test_ランチャーの口はprocess_managerを呼び一時停止しない(self) -> None:
-        """ランチャーは標準入力を渡さずに呼び、戻り値で判断する。止まって待つと時間切れになる。"""
-        for name, args in (("launcher_stop.bat", "--any %*"),
-                           ("launcher_status.bat", "--any --status")):
-            with self.subTest(name=name):
-                commands = "\n".join(_commands(read_text(name)))
-                self.assertIn(f"python process_manager.py {args}", commands)
-                self.assertNotIn("pause", commands)
-                self.assertIn("exit /b %RC%", commands, "戻り値をランチャーへ返す")
 
     def test_起動するモジュールが実在する(self) -> None:
         """`python -m ...` の綴りを間違えても、実行するまで気づけない。"""
@@ -352,11 +332,16 @@ class VbsTests(unittest.TestCase):
                                  text.count("MsgBox "),
                                  f"{name}: 知らせたのに続行している箇所があります")
 
-    def test_引数をそのまま渡す(self) -> None:
-        """ランチャーは「--no-browser」を渡す(起動完了を確かめてから自分で画面を開く)。"""
-        text = read_text("Start.vbs")
-        self.assertIn("WScript.Arguments", text, "ランチャーは WScript.Arguments を見て引数を渡すか決める")
-        self.assertIn('Chr(34) & script & Chr(34) & extra', text)
+    def test_ランチャー用の口を足さない(self) -> None:
+        """業務ツール統合ランチャーには、この3本と exe をそのまま登録する(統合 1.2.5)。
+
+        all-tools(業務ツール統合ツール)と同じく、起動ファイルの中身は変えずに
+        プログラムの中だけで合わせる。Start.vbs は引数を渡さない ── ランチャーは
+        `WScript.Arguments` があると「--no-browser」を勧め、ツールごとに登録が変わる。
+        """
+        self.assertNotIn("WScript.Arguments", read_text("Start.vbs"))
+        extra = sorted(p.name for p in _ROOT.glob("*.bat") if p.name not in BATCH_FILES)
+        self.assertEqual(extra, [], "ランチャー専用の bat を置かない")
 
     def test_通常起動はモードを指定しない(self) -> None:
         """**どのモードで開くかは端末が決める**(`アクセス権限` マスタ)。

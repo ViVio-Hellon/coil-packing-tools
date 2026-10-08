@@ -138,12 +138,24 @@
     $("envNote").textContent = s.env_override
       ? "環境変数 COIL_PACKING_TOOLS_LOG_DIR が入っているため、そちらに出しています(試験用)" : "";
   }
+  // 保存してある値を出す。defaultValue にも置き、保存していない直しを見分ける(統合 1.2.5)
+  function shown(id, value) {
+    var el = $(id);
+    el.value = String(value === undefined || value === null ? "" : value);
+    el.defaultValue = el.value;
+  }
+  // 統合画面の「終了」・窓の × ・外からの停止の前に、統合画面が訊く
+  window.cptUnsaved = function () {
+    var dir = $("dirInput"), keep = $("keepInput");
+    return (dir.value !== dir.defaultValue || keep.value !== keep.defaultValue)
+      ? ["ログ: 出力先・残す日数(保存していない)"] : [];
+  };
   function loadStatus() {
     return api("/api/log/status").then(function (s) {
       if (!s.ok) { result(s.message || "読めませんでした", false); return; }
       fill(s);
-      $("dirInput").value = s.configured || "";
-      $("keepInput").value = s.keep_days;
+      shown("dirInput", s.configured || "");
+      shown("keepInput", s.keep_days);
     });
   }
   function send(action) {
@@ -153,7 +165,8 @@
       result(j.message || (j.error && j.error.message) || "", !!j.ok);
       if (j.ok && action !== "check") {
         fill(j);
-        $("dirInput").value = j.configured || "";
+        shown("dirInput", j.configured || "");
+        if (j.keep_days !== undefined) shown("keepInput", j.keep_days);
       }
     });
   }
