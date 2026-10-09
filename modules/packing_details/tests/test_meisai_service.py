@@ -46,6 +46,16 @@ class WeightTest(unittest.TestCase):
         self.assertEqual(cm.exception.reason, REFUSE_NO_WEIGHT)
         self.assertIn("丈1", cm.exception.message)
 
+    def test_小数は黙って切り捨てずに断る(self):
+        """統合 1.2.6: 日本語入力から入った 2502.7 を 2502 にして紙・履歴へ書いていた。"""
+        for bad in ("2502.7", "2502.5", "inf", "nan"):
+            with self.subTest(bad=bad), self.assertRaises(RefusedError) as cm:
+                meisai_service.read_weights([bad, "248"], 2)
+            self.assertEqual(cm.exception.reason, REFUSE_NO_WEIGHT)
+            self.assertIn("整数", cm.exception.message)
+        # 同じ数なら通す(小数点以下が 0)
+        self.assertEqual(meisai_service.read_weights(["250.0", "248"], 2), [250, 248])
+
     def test_余分な欄は無視する(self):
         self.assertEqual(meisai_service.read_weights(["250", "248", "999"], 2),
                          [250, 248])

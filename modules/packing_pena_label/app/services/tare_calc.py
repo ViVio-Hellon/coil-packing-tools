@@ -397,14 +397,20 @@ def calc_nw(coil_text: float, coil_no: int, t1: float, t2: float,
 
     VBA は ``Format(..., "0.0")`` の **文字列** を Double 戻り値へ代入している。
     つまり **NW は小数第1位に丸められてから** HU/GW に加算される。ここも同じにする。
+
+    **``Val`` は文字列を受ける関数。** VBA の ``Val(本数 × T1)`` は、掛けた Double をいったん
+    ``CStr``(有効数字 15 桁)で文字列にしてから読む。3 × 101.35 は 2進では
+    304.04999999999995 だが、VBA は "304.05" として読み、``Format`` で 304.1 にする。
+    以前はこの文字列化を飛ばしていて 304.0 になり、保存・ラベルの NW が VBA と 0.1 違った
+    (統合 1.2.6。1条重量が小数2桁以上のときだけ起きる)。
     """
     if coil_no in (1, 2):
         if take1_visible:
-            return float(fmt(val(coil_text * t1), "0.0"))
+            return float(fmt(val(cstr(coil_text * t1)), "0.0"))
         return 0.0
     if coil_no in (3, 4):
         if take2_visible:
-            return float(fmt(val(coil_text * t2), "0.0"))
+            return float(fmt(val(cstr(coil_text * t2)), "0.0"))
         return 0.0
     return 0.0
 

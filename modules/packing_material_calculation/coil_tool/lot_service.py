@@ -89,7 +89,10 @@ def _or_no_data(value: float, decimals: Optional[int] = None) -> str:
     """
     if value == 0:
         return OrderInfo.NO_DATA
-    return vba.fmt(value, decimals) if decimals is not None else vba.int_text(value)
+    # 小数を切り捨てない(統合 1.2.6)。VBA は値をそのままテキストボックスへ入れる
+    # (`.梱包単位_重量 = …`)。以前は整数にしていて、外径 1160.5 が 1160、重量 1000.5 が 1000 になり、
+    # パレットの選び方・積数・チェックリスト・発注履歴へそのまま乗っていた。整数の値は今までどおり
+    return vba.fmt(value, decimals) if decimals is not None else vba.num_text(value)
 
 
 def expand_order(conn: sqlite3.Connection, order_no: str) -> Optional[OrderInfo]:

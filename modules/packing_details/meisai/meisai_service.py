@@ -86,10 +86,18 @@ def read_weights(values: list[object], jou_su: int) -> list[int]:
             raise strand_service.RefusedError(
                 REFUSE_NO_WEIGHT, f"丈{index + 1}の重量が未入力です。")
         try:
-            out.append(int(float(text)))
+            number = float(text)
         except ValueError:
             raise strand_service.RefusedError(
                 REFUSE_NO_WEIGHT, f"丈{index + 1}の重量が未入力です。") from None
+        # **小数を黙って切り捨てない**(統合 1.2.6)。VBA の入力欄は数字以外を弾くので
+        # 小数は入らない。ツールでも日本語入力(IME)からは小数点が入りえて、以前は
+        # 2502.7 を 2502 にして紙・履歴(共有)へ書いていた。違う数を書くより断る
+        if number != number or number in (float("inf"), float("-inf")) or not number.is_integer():
+            raise strand_service.RefusedError(
+                REFUSE_NO_WEIGHT,
+                f"丈{index + 1}の重量は整数で入力してください(小数点は使えません): {text}")
+        out.append(int(number))
     return out
 
 

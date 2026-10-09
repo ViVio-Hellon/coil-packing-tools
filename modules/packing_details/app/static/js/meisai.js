@@ -210,6 +210,16 @@ function renderWeights(state) {
     input.addEventListener("beforeinput", (event) => {
       if (event.data && !/^\d+$/.test(event.data)) event.preventDefault();
     });
+    // 日本語入力(IME)の確定は beforeinput で止められない(統合 1.2.6)。全角の数字は半角へ
+    // 直す(同じ数)。小数点などは**消さずに知らせる** ── 消すと 2502.7 が 25027 になる。
+    // そのまま送ればサーバが断る(以前は黙って 2502 に切り捨てていた)
+    input.addEventListener("input", () => {
+      const half = input.value.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+      if (half !== input.value) input.value = half;
+      const bad = /[^0-9]/.test(half);
+      input.classList.toggle("is-bad", bad);
+      if (bad) notify(`丈${jou}の重量は整数で入力してください(小数点は使えません)`, "ng");
+    });
     input.addEventListener("change", sendWeights);
     cell.appendChild(input);
 

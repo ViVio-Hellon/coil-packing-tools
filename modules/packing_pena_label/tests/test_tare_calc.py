@@ -145,6 +145,16 @@ class TestNw(unittest.TestCase):
         self.assertEqual(v, 30.2)          # 30.15 -> "30.2" -> 30.2
         self.assertNotAlmostEqual(v, 30.15)
 
+    def test_val_reads_the_product_as_vba_cstr_does(self):
+        """VBA の Val は文字列を受ける: 掛けた Double を 15 桁で文字列にしてから読む(統合 1.2.6)。
+
+        3 × 101.35 は 2進では 304.04999999999995。VBA は "304.05" → 304.1。
+        以前は 304.0 になり、保存・ラベルの NW が VBA と 0.1 違った。
+        """
+        self.assertEqual(TC.calc_nw(3, 1, 101.35, 0, True, False), 304.1)
+        self.assertEqual(TC.calc_nw(3, 3, 0, 20.15, False, True), 60.5)
+        self.assertEqual(TC.calc_nw(2, 1, 101.35, 0, True, False), 202.7)
+
     def test_hidden_take_gives_zero(self):
         self.assertEqual(TC.calc_nw(11, 1, 10, 0, False, False), 0.0)
         self.assertEqual(TC.calc_nw(11, 3, 0, 12, False, False), 0.0)

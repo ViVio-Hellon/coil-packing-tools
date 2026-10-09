@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import re
 import struct
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 # 先頭から数値として読める部分。VBA `Val` は読めるところまでを数値にする
@@ -132,10 +133,31 @@ def num_in(value: Any, *candidates: Any) -> bool:
 
 
 def fmt(value: Any, decimals: int) -> str:
-    """VBA `Format(x, "0.00")` 相当。数値でなければそのまま返す。"""
+    """VBA `Format(x, "0.00")` 相当。数値でなければそのまま返す。
+
+    **VBA の Format は、数を有効数字 15 桁で見て、半分は 0 から遠いほうへ丸める**(四捨五入)。
+    以前は Python の書式(`f"{x:.2f}"`)で、2進の値のまま偶数の側へ丸めていたため、
+    製品単重 106.475 が VBA の 106.48 ではなく 106.47 になっていた(統合 1.2.6。VBA の書き出し
+    `tests/data/VBA書き出し_20260923_疑似` の Q1293A0 で確かめた値)。単重は積数の計算に使う。
+    """
     if not is_numeric(value):
         return "" if value is None else str(value)
-    return f"{val(value):.{decimals}f}"
+    number = Decimal(f"{val(value):.15g}")
+    rounded = number.quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP)
+    if rounded == 0:
+        rounded = abs(rounded)          # "-0.00" にしない
+    return f"{rounded:.{decimals}f}"
+
+
+def num_text(value: Any) -> str:
+    """数を VBA がテキストボックスへ入れたときの形にする(`CStr`: 有効数字 15 桁)。
+
+    **整数は整数のまま、小数は小数のまま**(切り捨てない)。1160 → "1160"、1160.5 → "1160.5"。
+    """
+    number = val(value)
+    if number.is_integer() and abs(number) < 1e15:
+        return str(int(number))
+    return f"{number:.15g}"
 
 
 def int_text(value: Any) -> str:
