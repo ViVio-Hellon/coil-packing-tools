@@ -54,7 +54,7 @@ DB処理・帳票は移植元のまま、それぞれ独立して動きます。
 ## 画面の作り
 
 ```
-上の帯   コイル梱包ツール VER1.2.5 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] 説明書 ログ 接続OK [終了]
+上の帯   コイル梱包ツール VER1.2.6 [梱包明細] [ペナラベル] [資材計算]   画面の色[自動|ライト|ダーク] 説明書 ログ 接続OK [終了]
 中身     見せているタブの機能の画面(iframe)。ほかのタブは隠しているだけで消えない
 ```
 
@@ -185,10 +185,10 @@ Python を 3.12 から 3.13 に上げるなど **Store の Python の版を変�
 
 | | 版 | 出どころ |
 |---|---|---|
-| コイル梱包ツール(統合ツール) | 1.2.5 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
-| 梱包明細 | 0.13.15 | `modules/packing_details/config/app.json` |
-| ペナラベル | 1.5.16 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
-| 資材計算 | 0.2.14 | `modules/packing_material_calculation/config/app.json` |
+| コイル梱包ツール(統合ツール) | 1.2.6 | `config/app.json`(デスクトップ版の `src-tauri/tauri.conf.json`・`Cargo.toml` もそろえる) |
+| 梱包明細 | 0.13.16 | `modules/packing_details/config/app.json` |
+| ペナラベル | 1.5.17 | `modules/packing_pena_label/app/config.py` の `APP_VERSION` |
+| 資材計算 | 0.2.15 | `modules/packing_material_calculation/config/app.json` |
 
 機能の中身を変えたら、その機能の版と統合ツールの版の両方を上げます。統合画面や共通部分
 だけを変えたら、統合ツールの版だけを上げます。決まりの全体は `docs/変更履歴.md`。
