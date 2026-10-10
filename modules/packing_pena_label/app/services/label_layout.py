@@ -14,7 +14,19 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 
 from . import size_master as SM
-from .vba_compat import fmt
+from .vba_compat import fmt, is_numeric
+
+
+def weight_text(wt: str) -> str:
+    """ラベルに刷る重量の形。VBA の台紙のセル書式 ``0.0_ `` と同じ **小数1桁**(四捨五入)。
+
+    重量器は小数2桁まで量れないので、打った値はふつう小数1桁まで。打ったまま刷ると
+    "20" が 20、"20.15" が 20.15 になり、VBA の台紙(20.0・20.2)と違っていた(統合 1.2.6)。
+    **台紙のセル(保存する値)は打ったまま**(VBA も値はそのまま書き、セルの書式で小数1桁に
+    見せる。本物の台紙と照らし合わせる試験 ``test_label_layout`` もそう)。書式を付けるのは
+    画面・印刷に出すときだけ。バーコードは打ったまま(VBA も打った文字のまま組む)。
+    """
+    return fmt(wt, "0.0") if is_numeric(wt) else wt
 
 #: (row, col) -> value
 CellMap = Dict[Tuple[int, int], str]
@@ -152,7 +164,7 @@ def build_label_rows(ken: str, wt: str, kataban: str,
                 "coilNo": coil,
                 "kataban": kataban,
                 "kensaNo": ken,
-                "weight": wt,
+                "weight": weight_text(wt),
                 "unit": "kg",
                 "barcodeKataban": "*" + kataban + "*",
                 "barcodeKensa": f"*{ken}{coil} {wt}*",

@@ -712,7 +712,7 @@ class Workflow:
         print_header = {
             "sizeName": cfg.size_cell_label,
             "kensaNo": ken,
-            "weight": wt,
+            "weight": LL.weight_text(wt),          # 台紙のセル書式 0.0(統合 1.2.6)
             "weightLabel": "重量 丈%d" % take,
             "kataban": cfg.kataban or header["kataban"],
         }

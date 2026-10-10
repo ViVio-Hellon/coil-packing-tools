@@ -20,6 +20,7 @@ import time
 from typing import Dict, List
 
 from ..config import code_stamp as _code_stamp
+from ..services import label_layout as LL
 from ..services import size_master as SM
 from ..view import Renderer, esc, nl2br
 
@@ -494,7 +495,7 @@ class PageRoutes:
                     f'<td>{esc(cfg.size_cell_label)}</td>'
                     f'<td>{esc(cfg.kataban)}</td><td class="num">{cfg.data_row}</td>'
                     f'<td class="num">{cfg.extra_row}</td>'
-                    f'<td>{esc(h["kensaNo"])}</td><td class="num">{esc(h["weight"])}</td>'
+                    f'<td>{esc(h["kensaNo"])}</td><td class="num">{esc(LL.weight_text(h["weight"]))}</td>'
                     f'<td>{esc(h["updatedAt"])}</td>'
                     f'<td><a href="{self.base}/labels?ob={cfg.ob_idx}">表示</a>'
                     + (f' / <a href="{self.base}/labels/print?ob={cfg.ob_idx}" target="_blank" '
@@ -549,7 +550,7 @@ class PageRoutes:
                 f'<td class="num">{esc(c["gw"])}</td></tr>' for c in v["coilInfo"])
             sections.append(
                 f'<div class="card"><h2>{esc(cfg["sheetName"])}'
-                f'（検番 {esc(v["header"]["kensaNo"])} / 重量 {esc(v["header"]["weight"])}kg '
+                f'（検番 {esc(v["header"]["kensaNo"])} / 重量 {esc(v["printHeader"]["weight"])}kg '
                 f'/ 型番 {esc(v["header"]["kataban"])}）</h2>'
                 f'<table class="tbl" style="max-width:520px"><thead><tr><th>行</th>'
                 f'<th>本数</th><th>高さ</th><th>NW</th><th>GW</th></tr></thead>'
@@ -1166,7 +1167,8 @@ class PageRoutes:
                             f'<div class="row"><span class="k">P</span>'
                             f'<span class="v">{esc(data.get("kataban",""))}</span></div>'
                             f'<div class="row"><span class="k">Q</span>'
-                            f'<span class="v">{esc(wt)}</span>'
+                            # 刷る重量は小数1桁(台紙の書式。統合 1.2.6)。バーコードは打ったまま
+                            f'<span class="v">{esc(LL.weight_text(wt))}</span>'
                             f'<span class="v" style="flex:0 0 auto">kg</span></div>'
                             f'<div class="bc">*{esc(ken)}{esc(sub)} {esc(wt)}*</div>'
                             f'<div class="cellref">{esc(size)}</div></div>')

@@ -169,7 +169,9 @@ def _split_for_no_single(state: CalcState, stack: float, ins: float) -> tuple[in
     # 仮の台数から1台戻して、その1台ぶんを2台に割る
     re_x = x - 1
     re_stack = (ins - (re_x * stack)) / 2
-    state.Re_積数 = vba.int_text(re_stack)
+    # 積数は小数点第1位で切り捨て(3.5 → 3。現場の確認、統合 1.2.6)。
+    # Re_積数 は検入数の半分なので、端数は .5 だけ
+    state.Re_積数 = str(vba.round_down(re_stack))
     state.Re_台数 = "2"
     state.積数 = vba.int_text(stack)
     state.mark(FLAG_SINGLE_SPLIT)

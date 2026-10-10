@@ -13,6 +13,7 @@ from modules.packing_pena_label.app.services.label_layout import (build_coil_inf
                                        cellmap_to_a1, clear_coil_info_cells,
                                        coil_numbers, col_letter)
 from modules.packing_pena_label.app.services.size_master import LABEL_BASE_ROWS
+from modules.packing_pena_label.app.services import label_layout as LL
 
 #: 実 xlsx から読み取った期待値（A1 表記）
 REAL_SHEET = {
@@ -114,3 +115,24 @@ class TestCoilInfo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPrintedWeight(unittest.TestCase):
+    """ラベルに刷る重量は台紙のセル書式 ``0.0_ `` と同じ小数1桁(統合 1.2.6)。
+
+    重量器は小数2桁まで量れない。台紙のセル(保存する値)とバーコードは打ったまま。
+    """
+
+    def test_weight_text_is_one_decimal(self):
+        for typed, want in (("20", "20.0"), ("20.15", "20.2"), ("20.14", "20.1"),
+                            ("110.5", "110.5"), ("", ""), ("abc", "abc")):
+            with self.subTest(typed=typed):
+                self.assertEqual(LL.weight_text(typed), want)
+
+    def test_rows_print_one_decimal_but_keep_barcode_and_cells(self):
+        rows = LL.build_label_rows("W111111", "20.15", "K1", 1)
+        self.assertEqual(rows[0]["weight"], "20.2")
+        self.assertTrue(rows[0]["barcodeKensa"].endswith(" 20.15*"), rows[0]["barcodeKensa"])
+        cells = LL.build_label_cells("W111111", "20.15", "K1", 1)
+        self.assertIn("20.15", cells.values())
+        self.assertNotIn("20.2", cells.values())

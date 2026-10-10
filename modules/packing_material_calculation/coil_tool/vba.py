@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import re
 import struct
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from typing import Any
 
 # 先頭から数値として読める部分。VBA `Val` は読めるところまでを数値にする
@@ -99,8 +99,15 @@ def round_up(value: float) -> int:
 
 
 def round_down(value: float) -> int:
-    """Excel `WorksheetFunction.RoundDown(x, 0)`。**0 に近いほうへ**(切り捨て)。"""
-    return int(math.floor(value)) if value >= 0 else int(math.ceil(value))
+    """Excel `WorksheetFunction.RoundDown(x, 0)`。**0 に近いほうへ**(切り捨て)。
+
+    積数は**小数点第1位で切り捨て**(現場の確認。Re_積数 3.5 → 3 も同じ)。
+    **割り切れる計算は割り切れたまま切り捨てる**: 1760 ÷ 70.4 は 2進では 24.999999999999996 に
+    なり、そのまま切り捨てると 24(正しくは 25)。Excel と同じく有効数字 15 桁で見てから切り捨てる
+    (統合 1.2.6。重量 ÷ 単重 がちょうど割り切れるときだけ起きていた)。
+    """
+    number = Decimal(f"{value:.15g}")
+    return int(number.to_integral_value(rounding=ROUND_DOWN))
 
 
 def to_single(value: float) -> float:

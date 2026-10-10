@@ -9,6 +9,8 @@ python-web-tools で「取り込み・書き込みで数を勝手に丸め、違
 2. 受注の 梱包単位_重量・枚数、コイル外径・内径を整数に切り捨てていた(1160.5 → 1160)。
    VBA は値のままテキストボックスへ入れる。外径はパレットの選び方、重量・枚数は積数 →
    台数 → チェックリスト・発注履歴へ乗る
+3. 積数の切り捨て(`RoundDown`)が、割り切れる計算を 2進の誤差で 1 少なくしていた
+   (1760 ÷ 70.4 = 25 → 24)。積数は小数点第1位で切り捨て(現場の確認)、割り切れるならそのまま
 """
 from __future__ import annotations
 
@@ -76,3 +78,16 @@ def test_integer_values_are_unchanged(conn):
     assert (info.梱包単位_重量, info.梱包単位_枚数, info.コイル外径_MAX, info.コイル内径_目標) == \
         ("1000", lot_service.OrderInfo.NO_DATA, "1160", "508")
     assert info.製品単重 == "106.48"
+
+
+@pytest.mark.parametrize("weight, unit, want", [
+    (1760, 70.4, 25), (1056, 70.4, 15), (1610, 64.4, 25),   # 2進では 24.999… などになる組み合わせ
+    (1000, 106.48, 9), (500, 100.005, 4), (7, 2, 3),          # ふつうに切り捨てる
+])
+def test_round_down_keeps_exact_divisions(weight, unit, want):
+    assert vba.round_down(weight / unit) == want
+
+
+def test_round_down_cuts_the_first_decimal():
+    """積数は小数点第1位で切り捨て(Re_積数 3.5 → 3 も)。"""
+    assert [vba.round_down(x) for x in (3.5, 3.9, 2.5, 0.99, 4.0)] == [3, 3, 2, 0, 4]
